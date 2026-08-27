@@ -1,0 +1,1747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spirit of Sadiq</title>
+<style>
+  :root{
+    --bg:#F3F4F6;
+    --surface:#FFFFFF;
+    --surface-alt:#F7F8FA;
+    --border:#E1E4E9;
+    --text:#12151C;
+    --text-muted:#697180;
+    --accent:#0D9488;
+    --accent-deep:#0B7A70;
+    --accent-soft:#E6F5F3;
+    --warn:#DC2626;
+    --warn-soft:#FDECEC;
+    --good:#16A34A;
+    --good-soft:#E8F8ED;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg); color:var(--text); font-family:var(--sans); min-height:100vh; -webkit-font-smoothing:antialiased;}
+  .app{max-width:900px; margin:0 auto; padding:18px 14px 60px;}
+
+  header.top{display:flex; align-items:flex-start; justify-content:space-between; padding-bottom:16px; margin-bottom:16px; border-bottom:1px solid var(--border); flex-wrap:wrap; gap:10px;}
+  .brand{font-size:19px; font-weight:800; letter-spacing:-0.01em; color:var(--text);}
+  .brand small{display:block; font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-muted); margin-top:2px;}
+  .identity{text-align:right; font-size:13px; color:var(--text-muted);}
+  .identity .role-tag{display:inline-block; font-size:10px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:var(--accent-deep); background:var(--accent-soft); padding:2px 8px; border-radius:5px;}
+  .identity .who{color:var(--text); font-weight:700; font-size:13.5px; margin-top:4px;}
+  .identity button{background:none; border:none; color:var(--accent-deep); font-size:11.5px; font-weight:600; cursor:pointer; padding:0; margin-top:4px;}
+
+  nav.tabs{display:flex; gap:2px; margin-bottom:20px; border-bottom:1px solid var(--border); overflow-x:auto;}
+  nav.tabs button{background:none; border:none; border-bottom:2px solid transparent; color:var(--text-muted); font-size:12.5px; font-weight:600; padding:10px 12px; cursor:pointer; white-space:nowrap;}
+  nav.tabs button.active{color:var(--accent-deep); border-bottom-color:var(--accent);}
+  nav.tabs button:hover:not(.active){color:var(--text);}
+
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px 20px; margin-bottom:14px;}
+  .card h2{font-size:15.5px; font-weight:700; margin:0 0 4px;}
+  .section-title{font-size:15px; font-weight:700; color:var(--text); margin:0;}
+  .eyebrow{font-size:10.5px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px;}
+  .muted{color:var(--text-muted); font-size:12.5px;}
+  .muted-light{color:var(--text-muted); font-size:12.5px;}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+  .row-between{display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;}
+
+  .target-box{display:flex; align-items:center; gap:8px; margin-top:8px;}
+  .target-box input{width:64px; font-family:var(--mono); font-size:14px; padding:6px 8px; border:1px solid var(--border); border-radius:7px; background:#fff;}
+  .progress-track{height:6px; background:var(--surface-alt); border-radius:4px; overflow:hidden; margin-top:10px;}
+  .progress-fill{height:100%; background:var(--accent);}
+
+  button.primary{background:var(--accent); color:#fff; border:none; font-size:12.5px; font-weight:700; padding:9px 16px; border-radius:8px; cursor:pointer;}
+  button.primary:hover{background:var(--accent-deep);}
+  button.ghost{background:#fff; border:1px solid var(--border); color:var(--text); font-size:12px; font-weight:600; padding:7px 13px; border-radius:8px; cursor:pointer;}
+  button.ghost:hover{border-color:var(--accent); color:var(--accent-deep);}
+  button.small-link{background:none; border:none; color:var(--accent-deep); font-size:12px; font-weight:600; cursor:pointer; padding:0;}
+  button.danger-link{background:none; border:none; color:var(--warn); font-size:12px; font-weight:600; cursor:pointer; padding:0;}
+
+  .period-toggle{display:inline-flex; background:var(--surface-alt); border-radius:8px; padding:3px; gap:2px;}
+  .period-toggle button{border:none; background:none; padding:6px 13px; border-radius:6px; font-size:11.5px; font-weight:700; color:var(--text-muted); cursor:pointer;}
+  .period-toggle button.active{background:#fff; color:var(--text); box-shadow:0 1px 2px rgba(0,0,0,0.08);}
+
+  .metric-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-top:12px;}
+  .metric-tile{background:var(--surface-alt); border-radius:9px; padding:12px 13px;}
+  .metric-value{font-family:var(--mono); font-size:22px; font-weight:700; color:var(--text); line-height:1;}
+  .metric-label{font-size:10.5px; color:var(--text-muted); margin-top:5px; line-height:1.3;}
+
+  .contact-card{background:var(--surface); border:1px solid var(--border); border-radius:11px; padding:14px 16px; margin-bottom:10px;}
+  .contact-card.nested{background:var(--surface-alt); border-color:transparent;}
+  .status-dot{display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--good); margin-right:7px; flex-shrink:0;}
+  .status-dot.overdue{background:var(--warn);}
+  .contact-top{display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
+  .contact-name{font-size:14.5px; font-weight:700; display:flex; align-items:center;}
+  .contact-meta{font-size:11.5px; color:var(--text-muted); margin-top:3px; margin-left:14px;}
+  .contact-meta.overdue-text{color:var(--warn); font-weight:600;}
+
+  .trail{display:flex; align-items:center; margin:12px 0 6px;}
+  .trail .seg{flex:1; height:2px; background:var(--border);}
+  .trail .seg.filled{background:var(--accent);}
+  .trail .node{width:9px; height:9px; border-radius:50%; background:#fff; border:2px solid var(--border); flex-shrink:0;}
+  .trail .node.filled{background:var(--accent); border-color:var(--accent-deep);}
+  .trail-caption{font-size:11px; color:var(--text-muted); margin-bottom:8px;}
+  .trail-caption b{color:var(--text);}
+
+  .notes-text{font-size:13px; color:var(--text); opacity:0.85; margin:7px 0 9px; line-height:1.5;}
+  .contact-actions{display:flex; gap:14px; margin-top:8px; flex-wrap:wrap;}
+
+  .field{margin-bottom:11px;}
+  .field label{display:block; font-size:10.5px; font-weight:700; letter-spacing:0.03em; text-transform:uppercase; color:var(--text-muted); margin-bottom:5px;}
+  .field input, .field textarea, .field select{width:100%; font-family:var(--sans); font-size:14px; padding:9px 10px; border:1px solid var(--border); border-radius:8px; background:#fff; color:var(--text);}
+  .field textarea{min-height:60px; resize:vertical;}
+  .form-actions{display:flex; gap:8px; margin-top:6px;}
+  .empty-state{text-align:center; padding:28px 14px; color:var(--text-muted); font-size:13.5px;}
+
+  .funnel-bar-row{display:flex; align-items:center; gap:10px; margin-bottom:9px;}
+  .funnel-label{width:130px; font-size:11px; color:var(--text-muted); flex-shrink:0;}
+  .funnel-track{flex:1; height:12px; background:var(--surface-alt); border-radius:6px; overflow:hidden;}
+  .funnel-fill{height:100%; background:var(--accent);}
+  .funnel-count{width:28px; text-align:right; font-family:var(--mono); font-size:11.5px; flex-shrink:0;}
+
+  .missionary-block{padding:14px 0; border-bottom:1px solid var(--border);}
+  .missionary-block:last-child{border-bottom:none;}
+  .missionary-block .name{font-size:14.5px; font-weight:700;}
+  .flag-badge{background:var(--warn-soft); color:var(--warn); font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:6px; white-space:nowrap;}
+  .ok-badge{background:var(--good-soft); color:var(--good); font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:6px; white-space:nowrap;}
+
+  .daeen-region{font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--accent-deep); margin-left:14px;}
+  .expand-toggle{margin-top:9px;}
+  .nested-block{margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);}
+
+  .search-box input{width:100%; font-family:var(--sans); font-size:14px; padding:9px 11px; border:1px solid var(--border); border-radius:8px; background:#fff; color:var(--text); margin-bottom:10px;}
+
+  .setup-screen{max-width:440px; margin:50px auto;}
+  .setup-screen h1{font-size:24px; font-weight:800; color:var(--text); margin-bottom:4px; text-align:center;}
+  .setup-screen .sub{font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:var(--accent-deep); margin-bottom:26px; text-align:center;}
+  .setup-card{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:24px; text-align:left;}
+  .role-choice{display:flex; gap:10px; flex-wrap:wrap;}
+  .role-choice button{flex:1; min-width:130px; padding:18px 12px; background:#fff; border:1px solid var(--border); border-radius:10px; cursor:pointer; text-align:center;}
+  .role-choice button:hover{border-color:var(--accent);}
+  .role-choice .r-title{font-size:15.5px; font-weight:700; color:var(--text);}
+  .role-choice .r-sub{font-size:10.5px; color:var(--text-muted); text-transform:uppercase; margin-top:4px; font-weight:600;}
+  .existing-list{margin:10px 0 16px; display:flex; flex-wrap:wrap; gap:6px; max-height:220px; overflow-y:auto;}
+  .existing-list button{background:var(--surface-alt); border:1px solid var(--border); color:var(--text); font-family:var(--sans); font-size:13px; padding:6px 12px; border-radius:8px; cursor:pointer; text-align:left;}
+  .existing-list button:hover{border-color:var(--accent); color:var(--accent-deep);}
+  .existing-list button .sub{display:block; font-size:9.5px; color:var(--text-muted); text-transform:uppercase; margin-top:1px;}
+  .divider-or{text-align:center; font-size:10.5px; font-weight:600; text-transform:uppercase; color:var(--text-muted); margin:14px 0;}
+  .loading{text-align:center; color:var(--text-muted); font-size:12.5px; padding:50px 0;}
+  .summary-box{background:var(--text); color:#fff; font-family:var(--mono); font-size:11.5px; line-height:1.7; padding:14px; border-radius:10px; white-space:pre-wrap; margin-top:10px; max-height:320px; overflow-y:auto;}
+  .error-text{color:var(--warn); font-size:12px; margin-top:8px;}
+  .back-link{margin-bottom:10px;}
+  .info-banner{background:var(--surface-alt); border-radius:10px; padding:13px 15px; margin-bottom:14px; font-size:13px; color:var(--text); line-height:1.6;}
+  .info-banner b{font-weight:700;}
+
+  table.admin-table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  table.admin-table th{text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; color:var(--text-muted); padding:8px 7px; border-bottom:1px solid var(--border);}
+  table.admin-table td{padding:8px 7px; border-bottom:1px solid var(--border); vertical-align:middle;}
+  table.admin-table select{font-size:12px; padding:5px 6px; border-radius:6px; border:1px solid var(--border);}
+  .import-instructions{font-size:12px; color:var(--text-muted); line-height:1.6; margin-bottom:10px;}
+  .import-instructions code{background:var(--surface-alt); padding:1px 5px; border-radius:5px;}
+  textarea.bulk-import{width:100%; min-height:150px; font-family:var(--mono); font-size:12px; padding:11px; border:1px solid var(--border); border-radius:8px;}
+  .preview-row{font-size:12.5px; padding:5px 0; border-bottom:1px solid var(--border);}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+(function(){
+  const root = document.getElementById('root');
+  const GROUP_OPTIONS = ['Social Media','Speaker\'s Corner','Muslim Sunrise'];
+  let state = {
+    loading: true,
+    me: null,               // {role:'missionary'|'admin', id, name}
+    admins: [],
+    missionaries: [],        // [{id,name,target,groups,isRegionalLeader,regionalLeaderId}]
+    daeenRoster: [],         // [{id,name,region,missionaryId,notes,lastEngaged}]
+    contactsM: {},           // {missionaryId: [contact,...]}
+    contactsD: {},           // {daeenId: [contact,...]}
+    groupReports: {},        // {missionaryId: [{id,date,group,notes}]}
+    stageLabels: ['Initial Contact','Interested','Ta\'leem (Study)','Bai\'at'],
+    tab: 'mine',
+    period: 'week',
+    setupStage: 'role',
+    pendingRole: null,
+    passwordInput: '',
+    searchText: '',
+    daeenFilterUnassigned: false,
+    newName: '',
+    newRegion: '',
+    newGroups: [],
+    addingContact: false,
+    editingContactId: null,
+    addingDaeen: false,
+    editingDaeenId: null,
+    expandedDaeenId: null,
+    addingDaeenContact: false,
+    editingDaeenContactId: null,
+    editingGroups: false,
+    addingGroupReport: false,
+    bulkImportText: '',
+    bulkImportPreview: null,
+    bulkMissionaryText: '',
+    bulkMissionaryPreview: null,
+    error: ''
+  };
+
+  function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+  function daysAgo(iso){
+    if(!iso) return null;
+    const then = new Date(iso + 'T00:00:00');
+    const now = new Date();
+    return Math.floor((now - then) / (1000*60*60*24));
+  }
+  function todayStr(){ return new Date().toISOString().slice(0,10); }
+  function escapeHtml(s){
+    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function periodStartISO(period){
+    if(period==='month'){
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+    }
+    // Reporting week runs Tuesday through the following Monday.
+    // (Day-level precision only — the app stores dates, not exact times, so
+    // this can't distinguish "Tuesday before 5pm" from "Tuesday after 5pm".)
+    const now = new Date();
+    const day = now.getDay(); // 0=Sun..6=Sat, Tuesday=2
+    const daysSinceTuesday = (day - 2 + 7) % 7;
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysSinceTuesday);
+    return start.toISOString().slice(0,10);
+  }
+  function inCurrentMonth(dateStr){
+    if(!dateStr) return false;
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+    const end = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
+    return dateStr >= start && dateStr <= end;
+  }
+
+  // ---------- storage adapter: Google Apps Script (shared) + localStorage (personal "who am I") ----------
+
+  const API_URL = 'https://script.google.com/macros/s/AKfycbyUS7Q5K4qTJu0Q82rM9gXw9DzGfqbOSWVAPbrZODFjjEu9OzE7a-ZSyKYoiP0Itc4m/exec';
+
+  async function gsGetAll(){
+    try{
+      const res = await fetch(API_URL + '?action=getAll', { method: 'GET' });
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    }catch(err){
+      console.error(err);
+      state.error = 'Could not reach the spreadsheet. Check your connection and reload.';
+      render();
+      return {};
+    }
+  }
+  async function gsSet(key, value){
+    try{
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        body: JSON.stringify({action:'set', key, value})
+      });
+      const data = await res.json();
+      return !!data.success;
+    }catch(err){
+      console.error(err);
+      state.error = 'Could not save — try again.';
+      render();
+      return false;
+    }
+  }
+  function localGetMe(){
+    try{ const raw = localStorage.getItem('sos-me'); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
+  }
+  function localSetMe(m){
+    try{ localStorage.setItem('sos-me', JSON.stringify(m)); }catch(e){}
+  }
+
+  async function loadAll(){
+    state.loading = true; render();
+
+    state.me = localGetMe();
+    if(state.me && state.me.role==='daeen') state.me = null; // old Daeen logins are retired
+
+    const kv = await gsGetAll();
+    state.kv = kv; // keep a snapshot around for anything else that might read it directly
+
+    if(kv['admins']){ try{ state.admins = JSON.parse(kv['admins']); }catch(e){ state.admins = []; } }
+    if(kv['missionaries']){ try{ state.missionaries = JSON.parse(kv['missionaries']); }catch(e){ state.missionaries = []; } }
+    if(kv['daeen-roster']){ try{ state.daeenRoster = JSON.parse(kv['daeen-roster']); }catch(e){ state.daeenRoster = []; } }
+    if(kv['stage-labels']){ try{ state.stageLabels = JSON.parse(kv['stage-labels']); }catch(e){} }
+
+    state.contactsM = {};
+    state.groupReports = {};
+    for(const m of state.missionaries){
+      state.contactsM[m.id] = kv['contacts-m:' + m.id] ? (function(){ try{ return JSON.parse(kv['contacts-m:' + m.id]); }catch(e){ return []; } })() : [];
+      state.groupReports[m.id] = kv['group-reports:' + m.id] ? (function(){ try{ return JSON.parse(kv['group-reports:' + m.id]); }catch(e){ return []; } })() : [];
+    }
+
+    state.contactsD = {};
+    for(const d of state.daeenRoster){
+      state.contactsD[d.id] = kv['contacts-d:' + d.id] ? (function(){ try{ return JSON.parse(kv['contacts-d:' + d.id]); }catch(e){ return []; } })() : [];
+    }
+
+    state.loading = false;
+    render();
+  }
+
+  async function saveMe(m){ state.me = m; localSetMe(m); }
+  async function saveAdmins(){ await gsSet('admins', JSON.stringify(state.admins)); }
+  async function saveMissionaries(){ await gsSet('missionaries', JSON.stringify(state.missionaries)); }
+  async function saveRoster(){ await gsSet('daeen-roster', JSON.stringify(state.daeenRoster)); }
+  async function saveContactsM(id){ await gsSet('contacts-m:' + id, JSON.stringify(state.contactsM[id] || [])); }
+  async function saveContactsD(id){ await gsSet('contacts-d:' + id, JSON.stringify(state.contactsD[id] || [])); }
+  async function saveGroupReports(id){ await gsSet('group-reports:' + id, JSON.stringify(state.groupReports[id] || [])); }
+
+
+  function buildTrail(stage){
+    let html = '<div class="trail">';
+    for(let i=0;i<4;i++){
+      html += '<div class="node ' + (i<=stage?'filled':'') + '"></div>';
+      if(i<3) html += '<div class="seg ' + (i<stage?'filled':'') + '"></div>';
+    }
+    html += '</div>';
+    return html;
+  }
+  function trailCaption(stage){
+    return '<div class="trail-caption">Currently: <b>' + escapeHtml(state.stageLabels[stage]) + '</b></div>';
+  }
+  function periodToggleHtml(){
+    return '<div class="period-toggle">' +
+      '<button data-period="week" class="' + (state.period==='week'?'active':'') + '">This week</button>' +
+      '<button data-period="month" class="' + (state.period==='month'?'active':'') + '">This month</button>' +
+      '</div>';
+  }
+
+  function weekBuckets(dates, weeks){
+    const now = new Date();
+    const buckets = new Array(weeks).fill(0);
+    for(const dstr of (dates||[])){
+      if(!dstr) continue;
+      const d = new Date(dstr + 'T00:00:00');
+      const diffDays = Math.floor((now - d) / (1000*60*60*24));
+      const weekIndex = Math.floor(diffDays/7);
+      if(weekIndex>=0 && weekIndex<weeks) buckets[weeks-1-weekIndex]++;
+    }
+    return buckets;
+  }
+  function monthBuckets(dates, months){
+    const now = new Date();
+    const buckets = new Array(months).fill(0);
+    for(const dstr of (dates||[])){
+      if(!dstr) continue;
+      const d = new Date(dstr + 'T00:00:00');
+      const diffMonths = (now.getFullYear()-d.getFullYear())*12 + (now.getMonth()-d.getMonth());
+      if(diffMonths>=0 && diffMonths<months) buckets[months-1-diffMonths]++;
+    }
+    return buckets;
+  }
+  function streakFromBuckets(buckets){
+    let streak = 0;
+    for(let i=buckets.length-1;i>=0;i--){ if(buckets[i]>0) streak++; else break; }
+    return streak;
+  }
+  function svgBarChart(buckets, color){
+    const w = 100, h = 60, gap = 1.2;
+    const barW = (w/buckets.length) - gap;
+    const maxV = Math.max(1, ...buckets);
+    let bars = '';
+    buckets.forEach((v,i)=>{
+      const bh = v>0 ? Math.max(3, (v/maxV)*38) : 1;
+      const x = i*(barW+gap);
+      const y = 48 - bh;
+      bars += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + bh.toFixed(1) + '" rx="1.5" fill="' + (color||'var(--accent)') + '"></rect>';
+      bars += '<text x="' + (x+barW/2).toFixed(1) + '" y="58" font-size="4.5" text-anchor="middle" fill="#8a93a3">' + v + '</text>';
+    });
+    return '<svg viewBox="0 0 ' + w + ' 62" style="width:100%; height:60px;">' + bars + '</svg>';
+  }
+  function trendCard(title, weekly, monthly, streak){
+    let html = '<div class="card"><h2>' + escapeHtml(title) + '</h2>';
+    html += '<div class="row" style="align-items:flex-start;">';
+    html += '<div style="flex:1; min-width:150px;"><div class="muted" style="margin-bottom:4px;">Last 8 weeks (reach-outs)</div>' + svgBarChart(weekly, '#0D9488') + '</div>';
+    html += '<div style="flex:1; min-width:150px;"><div class="muted" style="margin-bottom:4px;">Last 6 months (Bai\'ats)</div>' + svgBarChart(monthly, '#16A34A') + '</div>';
+    html += '</div>';
+    if(streak>0) html += '<div class="muted" style="margin-top:10px; color:var(--good); font-weight:700;">' + streak + ' week' + (streak===1?'':'s') + ' in a row with activity</div>';
+    html += '<div class="muted" style="margin-top:8px; font-size:10.5px;">Fills in from the day this was added — earlier weeks show as zero.</div>';
+    html += '</div>';
+    return html;
+  }
+  function collectHistory(contactsArray){
+    let all = [];
+    (contactsArray||[]).forEach(c => { all = all.concat(c.history||[]); });
+    return all;
+  }
+  function collectBaiatDates(contactsArray){
+    return (contactsArray||[]).filter(c=>c.stage===3 && c.baiatDate).map(c=>c.baiatDate);
+  }
+
+  function metricTile(value, label){
+    return '<div class="metric-tile"><div class="metric-value">' + value + '</div><div class="metric-label">' + escapeHtml(label) + '</div></div>';
+  }
+
+  function computeMetrics(missionaryId){
+    const periodStart = periodStartISO(state.period);
+    const daeenList = state.daeenRoster.filter(d=>d.missionaryId===missionaryId);
+    const daeenReachedOut = daeenList.filter(d=> d.lastEngaged && d.lastEngaged >= periodStart).length;
+    const personalContacts = state.contactsM[missionaryId] || [];
+    let baiats = 0;
+    for(const c of personalContacts){ if(c.stage===3 && inCurrentMonth(c.baiatDate)) baiats++; }
+    let tablighTotal = 0, tablighReachedOut = 0;
+    for(const d of daeenList){
+      const cs = state.contactsD[d.id] || [];
+      tablighTotal += cs.length;
+      for(const c of cs){
+        if(c.lastContact && c.lastContact >= periodStart) tablighReachedOut++;
+        if(c.stage===3 && inCurrentMonth(c.baiatDate)) baiats++;
+      }
+    }
+    return {
+      daeenReachedOut, daeenTotal: daeenList.length,
+      personalContactsTotal: personalContacts.length,
+      baiats, tablighReachedOut, tablighTotal
+    };
+  }
+
+  const DAEEN_ANNUAL_GOAL = 1;
+
+  function inCurrentYear(dateStr){
+    if(!dateStr) return false;
+    return dateStr.slice(0,4) === String(new Date().getFullYear());
+  }
+
+  function baiatsYTDForMissionary(missionaryId){
+    let count = 0;
+    for(const c of (state.contactsM[missionaryId]||[])){ if(c.stage===3 && inCurrentYear(c.baiatDate)) count++; }
+    const daeenList = state.daeenRoster.filter(d=>d.missionaryId===missionaryId);
+    for(const d of daeenList){
+      for(const c of (state.contactsD[d.id]||[])){ if(c.stage===3 && inCurrentYear(c.baiatDate)) count++; }
+    }
+    return count;
+  }
+
+  function daeenMetAnnualGoal(daeenId){
+    return (state.contactsD[daeenId]||[]).filter(c=>c.stage===3 && inCurrentYear(c.baiatDate)).length >= DAEEN_ANNUAL_GOAL;
+  }
+
+  const DAEEN_ACTIVE_WINDOW_DAYS = 30;
+  function isDaeenActive(daeenId){
+    const d = state.daeenRoster.find(x=>x.id===daeenId);
+    if(!d) return false;
+    const dd = daysAgo(d.lastEngaged);
+    if(dd !== null && dd <= DAEEN_ACTIVE_WINDOW_DAYS) return true;
+    const cs = state.contactsD[daeenId] || [];
+    return cs.some(c => (c.history||[]).some(h=>{
+      const hd = daysAgo(h);
+      return hd !== null && hd <= DAEEN_ACTIVE_WINDOW_DAYS;
+    }));
+  }
+
+  function progressBarHtml(current, goal, label){
+    const pct = goal>0 ? Math.min(100, Math.round(current/goal*100)) : 0;
+    let html = '<div style="margin-bottom:10px;">';
+    html += '<div class="row-between" style="margin-bottom:4px;"><span class="muted">' + escapeHtml(label) + '</span><span class="muted" style="font-family:var(--mono);">' + current + ' / ' + goal + '</span></div>';
+    html += '<div class="progress-track"><div class="progress-fill" style="width:' + pct + '%;' + (pct>=100?' background:var(--good);':'') + '"></div></div>';
+    html += '</div>';
+    return html;
+  }
+
+  // ---------- identity / setup ----------
+
+  function chooseRole(role){
+    state.pendingRole = role;
+    state.setupStage = (role === 'admin') ? 'password' : 'pick';
+    state.passwordInput = '';
+    state.searchText = '';
+    state.newName = '';
+    state.newRegion = '';
+    state.newGroups = [];
+    state.error = '';
+    render();
+  }
+  function checkAdminPassword(){
+    if(state.passwordInput === '1889'){ state.setupStage = 'pick'; state.error = ''; }
+    else{ state.error = 'Incorrect password.'; }
+    render();
+  }
+
+  async function chooseExistingMissionary(m){
+    await saveMe({role:'missionary', id:m.id, name:m.name});
+    if(m.isRegionalLeader && state.pendingRole==='groupleader') state.tab = 'region';
+    else state.tab = 'mine';
+    render();
+  }
+  async function chooseExistingAdmin(a){ await saveMe({role:'admin', id:a.id, name:a.name}); render(); }
+
+  async function createNewMissionary(){
+    const name = state.newName.trim();
+    if(!name){ state.error = 'Enter a name first.'; render(); return; }
+    const existing = state.missionaries.find(m=>m.name.toLowerCase()===name.toLowerCase());
+    if(existing){ await chooseExistingMissionary(existing); return; }
+    const m = {id: uid(), name, target: 10, groups: state.newGroups.slice(), isRegionalLeader:false, regionalLeaderId:''};
+    state.missionaries.push(m);
+    state.contactsM[m.id] = [];
+    await saveMissionaries();
+    await saveMe({role:'missionary', id:m.id, name:m.name});
+    render();
+  }
+  async function createNewAdmin(){
+    const name = state.newName.trim();
+    if(!name){ state.error = 'Enter a name first.'; render(); return; }
+    const existing = state.admins.find(a=>a.name.toLowerCase()===name.toLowerCase());
+    if(existing){ await chooseExistingAdmin(existing); return; }
+    const a = {id: uid(), name};
+    state.admins.push(a);
+    await saveAdmins();
+    await saveMe({role:'admin', id:a.id, name:a.name});
+    render();
+  }
+  function switchIdentity(){ state.me = null; state.setupStage = 'role'; render(); }
+
+  function renderSetup(){
+    let html = '<div class="setup-screen"><h1>Spirit of Sadiq</h1><div class="sub">Missionary Reporting</div>';
+    if(state.setupStage === 'role'){
+      html += '<div class="role-choice">';
+      html += '<button id="roleMissionary"><div class="r-title">Missionary</div><div class="r-sub">local</div></button>';
+      html += '<button id="roleGroupLeader"><div class="r-title">Group Leader</div><div class="r-sub">regional</div></button>';
+      html += '<button id="roleAdmin"><div class="r-title">National Access</div><div class="r-sub">national view</div></button>';
+      html += '</div></div>';
+      return html;
+    }
+    html += '<div class="back-link"><button class="small-link" id="backToRole">&larr; back</button></div>';
+    html += '<div class="setup-card">';
+
+    if(state.setupStage === 'password'){
+      html += '<div class="field"><label>National access password</label><input id="passwordInput" type="password" placeholder="Enter password" value="' + escapeHtml(state.passwordInput) + '"></div>';
+      html += '<button class="primary" id="submitPasswordBtn">Continue</button>';
+      if(state.error) html += '<div class="error-text">' + escapeHtml(state.error) + '</div>';
+      html += '</div></div>';
+      return html;
+    }
+
+    if(state.pendingRole === 'missionary'){
+      if(state.missionaries.length){
+        html += '<div class="muted" style="margin-bottom:8px;">Tap your name</div><div class="existing-list">';
+        for(const m of state.missionaries) html += '<button data-id="' + m.id + '" data-kind="m">' + escapeHtml(m.name) + '</button>';
+        html += '</div><div class="divider-or">or</div>';
+      }
+      html += '<div class="field"><label>New missionary</label><input id="newNameInput" type="text" placeholder="Your name" value="' + escapeHtml(state.newName) + '"></div>';
+      html += '<div class="field"><label>Your Special Tabligh Task(s)</label><div class="row">';
+      for(const g of GROUP_OPTIONS){
+        const checked = (state.newGroups||[]).includes(g);
+        html += '<label style="display:flex; align-items:center; gap:6px; font-size:13px; background:var(--surface-alt); padding:6px 11px; border-radius:8px; cursor:pointer;"><input type="checkbox" class="newGroupCheck" value="' + escapeHtml(g) + '" ' + (checked?'checked':'') + '> ' + escapeHtml(g) + '</label>';
+      }
+      html += '</div></div>';
+      html += '<button class="primary" id="createBtn">Join as missionary</button>';
+    } else if(state.pendingRole === 'groupleader'){
+      const leaders = state.missionaries.filter(m=>m.isRegionalLeader);
+      if(leaders.length){
+        html += '<div class="muted" style="margin-bottom:8px;">Tap your name</div><div class="existing-list">';
+        for(const m of leaders) html += '<button data-id="' + m.id + '" data-kind="m"><span>' + escapeHtml(m.name) + '</span>' + (m.regionLabel?('<span class="sub">' + escapeHtml(m.regionLabel) + '</span>'):'') + '</button>';
+        html += '</div>';
+      } else {
+        html += '<div class="muted">No group leaders have been set up yet.</div>';
+      }
+      html += '<div class="muted" style="margin-top:12px;">Don\'t see your name? Ask National Access to mark you as a Regional Leader first.</div>';
+    } else {
+      if(state.admins.length){
+        html += '<div class="muted" style="margin-bottom:8px;">Tap your name</div><div class="existing-list">';
+        for(const a of state.admins) html += '<button data-id="' + a.id + '" data-kind="a">' + escapeHtml(a.name) + '</button>';
+        html += '</div><div class="divider-or">or</div>';
+      }
+      html += '<div class="field"><label>New national access member</label><input id="newNameInput" type="text" placeholder="Your name" value="' + escapeHtml(state.newName) + '"></div>';
+      html += '<button class="primary" id="createBtn">Join national access</button>';
+    }
+    if(state.error) html += '<div class="error-text">' + escapeHtml(state.error) + '</div>';
+    html += '</div></div>';
+    return html;
+  }
+
+  function attachSetupHandlers(){
+    const rm = document.getElementById('roleMissionary');
+    if(rm) rm.addEventListener('click', ()=>chooseRole('missionary'));
+    const rgl = document.getElementById('roleGroupLeader');
+    if(rgl) rgl.addEventListener('click', ()=>chooseRole('groupleader'));
+    const ra = document.getElementById('roleAdmin');
+    if(ra) ra.addEventListener('click', ()=>chooseRole('admin'));
+    const back = document.getElementById('backToRole');
+    if(back) back.addEventListener('click', ()=>{ state.setupStage='role'; state.error=''; render(); });
+
+    root.querySelectorAll('.existing-list button').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const kind = btn.getAttribute('data-kind');
+        const id = btn.getAttribute('data-id');
+        if(kind==='m'){ const m = state.missionaries.find(x=>x.id===id); if(m) chooseExistingMissionary(m); }
+        else{ const a = state.admins.find(x=>x.id===id); if(a) chooseExistingAdmin(a); }
+      });
+    });
+    const nameInput = document.getElementById('newNameInput');
+    if(nameInput){
+      nameInput.addEventListener('input', e=>{ state.newName = e.target.value; });
+      nameInput.addEventListener('keydown', e=>{ if(e.key==='Enter') createBtnAction(); });
+    }
+    root.querySelectorAll('.newGroupCheck').forEach(cb=> cb.addEventListener('change', ()=>{
+      if(!state.newGroups) state.newGroups = [];
+      if(cb.checked){ if(!state.newGroups.includes(cb.value)) state.newGroups.push(cb.value); }
+      else{ state.newGroups = state.newGroups.filter(g=>g!==cb.value); }
+    }));
+    const passwordInput = document.getElementById('passwordInput');
+    if(passwordInput){
+      passwordInput.addEventListener('input', e=>{ state.passwordInput = e.target.value; });
+      passwordInput.addEventListener('keydown', e=>{ if(e.key==='Enter') checkAdminPassword(); });
+    }
+    const submitPasswordBtn = document.getElementById('submitPasswordBtn');
+    if(submitPasswordBtn) submitPasswordBtn.addEventListener('click', checkAdminPassword);
+    const createBtn = document.getElementById('createBtn');
+    if(createBtn) createBtn.addEventListener('click', createBtnAction);
+    function createBtnAction(){
+      if(state.pendingRole==='missionary') createNewMissionary(); else createNewAdmin();
+    }
+  }
+
+  // ---------- shared contact rendering ----------
+
+  function methodLabel(method){
+    if(method==='in_person') return 'in person';
+    if(method==='phone') return 'by phone';
+    return '';
+  }
+
+  function renderContactCard(c, opts){
+    const d = daysAgo(c.lastContact);
+    const overdue = d !== null && d >= 7;
+    let html = '<div class="contact-card ' + (opts.nested?'nested':'') + '">';
+    html += '<div class="contact-top"><div><div class="contact-name"><span class="status-dot ' + (overdue?'overdue':'') + '"></span>' + escapeHtml(c.name) + '</div>';
+    const methodTxt = methodLabel(c.method);
+    html += '<div class="contact-meta ' + (overdue?'overdue-text':'') + '">' + (d===null?'no contact logged':(d===0?'contacted today':'last contact ' + d + ' day' + (d===1?'':'s') + ' ago')) + (methodTxt?(' — ' + methodTxt):'') + (overdue?' — reach out soon':'') + '</div></div></div>';
+    html += trailCaption(c.stage) + buildTrail(c.stage);
+    if(c.notes) html += '<div class="notes-text">' + escapeHtml(c.notes) + '</div>';
+    if(c.stage===3 && c.baiatInfo) html += '<div class="notes-text" style="background:var(--accent-soft); padding:8px 10px; border-radius:8px;"><b>Bai’at:</b> ' + escapeHtml(c.baiatInfo) + '</div>';
+    if(opts.editable){
+      html += '<div class="contact-actions">';
+      html += '<button class="small-link" data-action="logtoday" data-method="in_person" data-id="' + c.id + '">Log in person</button>';
+      html += '<button class="small-link" data-action="logtoday" data-method="phone" data-id="' + c.id + '">Log by phone</button>';
+      if(c.stage < 3) html += '<button class="small-link" data-action="advance" data-id="' + c.id + '">Advance stage</button>';
+      html += '<button class="small-link" data-action="edit" data-id="' + c.id + '">Edit</button>';
+      html += '<button class="danger-link" data-action="delete" data-id="' + c.id + '">Delete</button>';
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderContactForm(c, editAction){
+    const isEdit = !!c;
+    const name = c ? c.name : '';
+    const notes = c ? c.notes : '';
+    const stage = c ? c.stage : 0;
+    const lastContact = c ? c.lastContact : todayStr();
+    const method = c ? (c.method||'') : '';
+    const baiatInfo = c ? (c.baiatInfo||'') : '';
+    let html = '<div class="card">';
+    html += '<div class="field"><label>Name</label><input type="text" id="fName" value="' + escapeHtml(name) + '" placeholder="Who are you reaching out to?"></div>';
+    html += '<div class="field"><label>Context / notes</label><textarea id="fNotes" placeholder="Where you met, family, interests, prayer requests…">' + escapeHtml(notes) + '</textarea></div>';
+    html += '<div class="row">';
+    html += '<div class="field" style="flex:1; min-width:160px;"><label>Stage</label><select id="fStage" onchange="document.getElementById(\'baiatInfoWrap\').style.display = this.value===\'3\' ? \'block\' : \'none\';">';
+    for(let i=0;i<4;i++) html += '<option value="' + i + '" ' + (i===stage?'selected':'') + '>' + escapeHtml(state.stageLabels[i]) + '</option>';
+    html += '</select></div>';
+    html += '<div class="field" style="flex:1; min-width:160px;"><label>Last contact date</label><input type="date" id="fDate" value="' + lastContact + '"></div>';
+    html += '</div>';
+    html += '<div class="field"><label>How did you reach them?</label><select id="fMethod">';
+    html += '<option value="" ' + (method===''?'selected':'') + '>Not specified</option>';
+    html += '<option value="in_person" ' + (method==='in_person'?'selected':'') + '>In person</option>';
+    html += '<option value="phone" ' + (method==='phone'?'selected':'') + '>Phone</option>';
+    html += '</select></div>';
+    html += '<div id="baiatInfoWrap" style="display:' + (stage===3?'block':'none') + '; background:var(--accent-soft); border-radius:9px; padding:12px; margin-bottom:12px;">';
+    html += '<div class="field" style="margin-bottom:0;"><label>Bai\'at details</label><textarea id="fBaiatInfo" placeholder="Name confirmed, date, any relevant details for the record…">' + escapeHtml(baiatInfo) + '</textarea></div>';
+    html += '</div>';
+    html += '<div class="form-actions">';
+    html += '<button class="primary" data-action="' + editAction + '" data-editid="' + (c?c.id:'') + '">' + (isEdit?'Save changes':'Add contact') + '</button>';
+    html += '<button class="ghost" data-action="cancel">Cancel</button>';
+    html += '</div></div>';
+    return html;
+  }
+
+  function stampBaiat(c, lastContact){
+    if(c.stage===3 && !c.baiatDate) c.baiatDate = lastContact || todayStr();
+  }
+  function stampHistory(c, date){
+    if(!c.history) c.history = [];
+    if(date && c.history[c.history.length-1] !== date) c.history.push(date);
+  }
+
+  // ---------- MISSIONARY: My Contacts ----------
+
+  function myContactsList(){
+    return (state.contactsM[state.me.id] || []).slice().sort((a,b)=>{
+      return ((daysAgo(b.lastContact) ?? -1)) - ((daysAgo(a.lastContact) ?? -1));
+    });
+  }
+  async function updateTarget(val){
+    const m = state.missionaries.find(r => r.id === state.me.id);
+    if(!m) return;
+    m.target = Math.max(0, parseInt(val)||0);
+    await saveMissionaries(); render();
+  }
+  async function editGroups(newGroups){
+    const m = state.missionaries.find(r => r.id === state.me.id);
+    if(!m) return;
+    m.groups = newGroups;
+    await saveMissionaries(); render();
+  }
+  function hasReportedThisWeek(missionaryId){
+    const periodStart = periodStartISO('week');
+    if(hasGroupReportThisWeek(missionaryId)) return true;
+    const personal = state.contactsM[missionaryId] || [];
+    if(personal.some(c => (c.history||[]).some(h=>h>=periodStart))) return true;
+    const myDaeen = state.daeenRoster.filter(d=>d.missionaryId===missionaryId);
+    if(myDaeen.some(d => d.lastEngaged && d.lastEngaged >= periodStart)) return true;
+    for(const d of myDaeen){
+      const cs = state.contactsD[d.id] || [];
+      if(cs.some(c => (c.history||[]).some(h=>h>=periodStart))) return true;
+    }
+    return false;
+  }
+
+  function hasGroupReportThisWeek(missionaryId){
+    const periodStart = periodStartISO('week');
+    return (state.groupReports[missionaryId]||[]).some(r => r.date >= periodStart);
+  }
+  async function addGroupReport(data){
+    const list = state.groupReports[state.me.id] || [];
+    list.push({id: uid(), date:data.date, group:data.group, notes:data.notes});
+    state.groupReports[state.me.id] = list;
+    await saveGroupReports(state.me.id);
+    state.addingGroupReport = false; render();
+  }
+  async function deleteGroupReport(id){
+    state.groupReports[state.me.id] = (state.groupReports[state.me.id]||[]).filter(r=>r.id!==id);
+    await saveGroupReports(state.me.id); render();
+  }
+  async function addContact(data){
+    const list = state.contactsM[state.me.id] || [];
+    const c = {id: uid(), name:data.name, notes:data.notes, stage:data.stage, lastContact:data.lastContact||todayStr(), method:data.method||'', baiatInfo:data.baiatInfo||'', created:todayStr()};
+    stampBaiat(c, c.lastContact); stampHistory(c, c.lastContact);
+    list.push(c);
+    state.contactsM[state.me.id] = list;
+    await saveContactsM(state.me.id);
+    state.addingContact = false; render();
+  }
+  async function updateContact(id, patch){
+    const list = state.contactsM[state.me.id] || [];
+    const c = list.find(x=>x.id===id);
+    if(c){ Object.assign(c, patch); stampBaiat(c, c.lastContact); stampHistory(c, c.lastContact); }
+    await saveContactsM(state.me.id);
+    state.editingContactId = null; render();
+  }
+  async function deleteContact(id){
+    state.contactsM[state.me.id] = (state.contactsM[state.me.id]||[]).filter(c=>c.id!==id);
+    await saveContactsM(state.me.id); render();
+  }
+
+  function renderMine(){
+    const m = state.missionaries.find(r=>r.id===state.me.id) || {target:10};
+    const cs = myContactsList();
+    const converts = cs.filter(c=>c.stage===3).length;
+    const pct = m.target > 0 ? Math.min(100, Math.round(converts/m.target*100)) : 0;
+    const myDaeenList = state.daeenRoster.filter(d=>d.missionaryId===state.me.id);
+    const activeCount = myDaeenList.filter(d=>isDaeenActive(d.id)).length;
+
+    let html = '<div class="card">';
+    html += '<h2>Your Bai\'at goal</h2>';
+    html += '<div class="row"><div class="muted">Target</div><div class="target-box"><input type="number" id="targetInput" value="' + m.target + '" min="0"></div></div>';
+    html += '<div class="muted" style="margin-top:8px;">' + converts + ' at "' + escapeHtml(state.stageLabels[3]) + '" of ' + m.target + ' target</div>';
+    html += '<div class="progress-track"><div class="progress-fill" style="width:' + pct + '%;"></div></div>';
+    if(myDaeenList.length){
+      html += '<div class="muted" style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">Active Daeen (' + activeCount + '/' + myDaeenList.length + ') lead to more Bai\'ats — that\'s the goal to focus on day to day. See <b>My Daeen</b>.</div>';
+    }
+    html += '</div>';
+
+    const myGroups = m.groups || [];
+    const groupList = (state.groupReports[state.me.id]||[]).slice().sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+    const loggedThisWeek = hasGroupReportThisWeek(state.me.id);
+
+    html += '<div class="card">';
+    html += '<div class="row-between"><h2>Your Special Tabligh Task</h2><button class="small-link" id="editGroupsBtn">edit</button></div>';
+    if(myGroups.length){
+      html += '<div class="row" style="margin-bottom:4px;">';
+      for(const g of myGroups) html += '<span style="background:var(--surface-alt); padding:5px 11px; border-radius:7px; font-size:12.5px; font-weight:600;">' + escapeHtml(g) + '</span>';
+      html += '</div>';
+    } else {
+      html += '<div class="muted">No group set — tap edit to choose one.</div>';
+    }
+    if(state.editingGroups){
+      html += '<div class="row" style="margin-top:10px;">';
+      for(const g of GROUP_OPTIONS){
+        const checked = myGroups.includes(g);
+        html += '<label style="display:flex; align-items:center; gap:6px; font-size:13px; background:var(--surface-alt); padding:6px 11px; border-radius:8px; cursor:pointer;"><input type="checkbox" class="editGroupCheck" value="' + escapeHtml(g) + '" ' + (checked?'checked':'') + '> ' + escapeHtml(g) + '</label>';
+      }
+      html += '</div><div class="form-actions"><button class="primary" id="saveGroupsBtn">Save</button></div>';
+    }
+    html += '<div class="muted" style="margin-top:12px;">' + (loggedThisWeek ? '<span style="color:var(--good); font-weight:700;">Activity logged this week</span>' : '<span style="color:var(--warn); font-weight:700;">No activity logged this week</span>') + '</div>';
+    html += '<div class="row-between" style="margin-top:10px;"><div></div><button class="ghost" id="addGroupReportBtn">+ Log activity</button></div>';
+    if(state.addingGroupReport){
+      html += '<div class="field" style="margin-top:10px;"><label>Date</label><input type="date" id="grDate" value="' + todayStr() + '"></div>';
+      if(myGroups.length > 1){
+        html += '<div class="field"><label>Group</label><select id="grGroup">';
+        for(const g of myGroups) html += '<option value="' + escapeHtml(g) + '">' + escapeHtml(g) + '</option>';
+        html += '</select></div>';
+      }
+      html += '<div class="field"><label>What did you do this week/month?</label><textarea id="grNotes" placeholder="e.g. posted 3 dawah videos, ran a Speaker\'s Corner session…"></textarea></div>';
+      html += '<div class="form-actions"><button class="primary" id="saveGroupReportBtn">Save</button><button class="ghost" id="cancelGroupReportBtn">Cancel</button></div>';
+    }
+    if(groupList.length){
+      html += '<div class="nested-block">';
+      for(const r of groupList){
+        html += '<div class="preview-row"><b>' + escapeHtml(r.date) + '</b>' + (r.group?(' &middot; ' + escapeHtml(r.group)):'') + ' — ' + escapeHtml(r.notes) + ' <button class="danger-link" data-action="deleteGroupReport" data-id="' + r.id + '" style="margin-left:8px;">delete</button></div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+
+    html += '<div class="row-between" style="margin-bottom:10px;"><h2 class="section-title">Your contacts</h2><button class="ghost" id="addContactBtn">+ Add contact</button></div>';
+    if(state.addingContact) html += renderContactForm(null, 'save');
+    if(!cs.length && !state.addingContact) html += '<div class="empty-state">No contacts logged yet. Add the first person you\'re reaching out to.</div>';
+    for(const c of cs){
+      if(state.editingContactId === c.id){ html += renderContactForm(c, 'save'); continue; }
+      html += renderContactCard(c, {editable:true, nested:false});
+    }
+
+    const mHistory = collectHistory(cs);
+    const mBaiats = collectBaiatDates(cs);
+    html += trendCard('Your personal activity', weekBuckets(mHistory,8), monthBuckets(mBaiats,6), streakFromBuckets(weekBuckets(mHistory,8)));
+
+    return html;
+  }
+
+  // ---------- MISSIONARY: My Daeen ----------
+
+  function myAssignedDaeen(){
+    return state.daeenRoster.filter(d=>d.missionaryId===state.me.id).slice().sort((a,b)=>{
+      return ((daysAgo(b.lastEngaged) ?? -1)) - ((daysAgo(a.lastEngaged) ?? -1));
+    });
+  }
+  async function addDaeenAssigned(){
+    const name = state.newName.trim();
+    if(!name){ state.error = 'Enter the Daeen\'s name.'; render(); return; }
+    const d = {id: uid(), name, region: state.newRegion.trim(), missionaryId: state.me.id, notes:'', lastEngaged: null};
+    state.daeenRoster.push(d);
+    state.contactsD[d.id] = [];
+    await saveRoster();
+    state.addingDaeen = false; state.newName=''; state.newRegion=''; state.error='';
+    render();
+  }
+  async function updateDaeenEntry(id, patch){
+    const d = state.daeenRoster.find(x=>x.id===id);
+    if(d) Object.assign(d, patch);
+    await saveRoster();
+    state.editingDaeenId = null; render();
+  }
+  async function deleteDaeenEntry(id){
+    state.daeenRoster = state.daeenRoster.filter(d=>d.id!==id);
+    await gsSet('daeen-roster', JSON.stringify(state.daeenRoster));
+    render();
+  }
+  async function logDaeenEngagement(id, method){
+    const d = state.daeenRoster.find(x=>x.id===id);
+    if(d){ if(!d.engagementHistory) d.engagementHistory=[]; const t = todayStr(); if(d.engagementHistory[d.engagementHistory.length-1]!==t) d.engagementHistory.push(t); }
+    await updateDaeenEntry(id, {lastEngaged: todayStr(), lastEngagedMethod: method});
+  }
+
+  function renderDaeenAddForm(){
+    let html = '<div class="card">';
+    html += '<div class="field"><label>Daeen name</label><input type="text" id="dName" placeholder="Full name" value="' + escapeHtml(state.newName) + '"></div>';
+    html += '<div class="field"><label>Jamaat (local chapter)</label><input type="text" id="dRegion" placeholder="e.g. St. Catherine Jamaat" value="' + escapeHtml(state.newRegion) + '"></div>';
+    html += '<div class="form-actions"><button class="primary" data-action="saveDaeen">Add to my region</button><button class="ghost" data-action="cancelDaeen">Cancel</button></div>';
+    if(state.error) html += '<div class="error-text">' + escapeHtml(state.error) + '</div>';
+    html += '</div>';
+    return html;
+  }
+  function renderDaeenEditForm(d){
+    let html = '<div class="card">';
+    html += '<div class="field"><label>Daeen name</label><input type="text" id="dName" value="' + escapeHtml(d.name) + '"></div>';
+    html += '<div class="field"><label>Jamaat (local chapter)</label><input type="text" id="dRegion" value="' + escapeHtml(d.region||'') + '"></div>';
+    html += '<div class="field"><label>Notes</label><textarea id="dNotes">' + escapeHtml(d.notes||'') + '</textarea></div>';
+    html += '<div class="form-actions"><button class="primary" data-action="saveDaeenEdit" data-editid="' + d.id + '">Save changes</button><button class="ghost" data-action="cancelDaeen">Cancel</button></div>';
+    html += '</div>';
+    return html;
+  }
+
+  function renderDaeenTab(){
+    const list = myAssignedDaeen();
+    const filtered = state.searchText ? list.filter(d=>d.name.toLowerCase().includes(state.searchText.toLowerCase())) : list;
+    const overdueCount = list.filter(d=>(daysAgo(d.lastEngaged)===null || daysAgo(d.lastEngaged)>=7)).length;
+    const metrics = computeMetrics(state.me.id);
+    const activeCount = list.filter(d=>isDaeenActive(d.id)).length;
+    const activePct = list.length>0 ? Math.min(100, Math.round(activeCount/list.length*100)) : 0;
+
+    let html = '<div class="card" style="border:2px solid var(--accent); background:var(--accent-soft);">';
+    html += '<div class="eyebrow">Your primary goal</div>';
+    html += '<h2>Active Daeen</h2>';
+    html += '<div class="muted" style="margin-bottom:8px;">Active Daeen naturally lead to more Bai\'ats — this is what to focus on day to day.</div>';
+    html += '<div class="row-between" style="margin-bottom:4px;"><span class="muted">' + activeCount + ' of ' + list.length + ' active</span></div>';
+    html += '<div class="progress-track"><div class="progress-fill" style="width:' + activePct + '%;' + (activePct>=100?' background:var(--good);':'') + '"></div></div>';
+    html += '</div>';
+
+    html += '<div class="card"><div class="row-between"><div class="eyebrow">Your Daeen</div>' + periodToggleHtml() + '</div>';
+    html += '<div class="metric-grid">';
+    html += metricTile(metrics.daeenReachedOut + '/' + metrics.daeenTotal, 'Daeen reached out to');
+    html += metricTile(metrics.tablighReachedOut + '/' + metrics.tablighTotal, 'Contacts reached by your Daeen');
+    html += '</div>';
+    html += '<div class="muted" style="margin-top:12px;">' + overdueCount + ' Daeen overdue for a check-in</div>';
+    html += '</div>';
+
+    const myDaeenList = myAssignedDaeen();
+    let allDaeenContacts = [];
+    myDaeenList.forEach(dd2 => { allDaeenContacts = allDaeenContacts.concat(state.contactsD[dd2.id]||[]); });
+    const dHist = collectHistory(allDaeenContacts);
+    const dBai = collectBaiatDates(allDaeenContacts);
+    html += trendCard("Your Daeen's activity", weekBuckets(dHist,8), monthBuckets(dBai,6), streakFromBuckets(weekBuckets(dHist,8)));
+
+    html += '<div class="row-between" style="margin-bottom:10px;"><h2 class="section-title">Your Daeen list</h2><button class="ghost" id="addDaeenBtn">+ Add Daeen</button></div>';
+    if(state.addingDaeen) html += renderDaeenAddForm();
+    html += '<div class="search-box"><input type="text" id="daeenSearch" placeholder="Search your Daeen…" value="' + escapeHtml(state.searchText) + '"></div>';
+
+    if(!filtered.length && !state.addingDaeen) html += '<div class="empty-state">' + (list.length? 'No match.' : 'No Daeen added yet. Add the ones you oversee.') + '</div>';
+
+    for(const d of filtered){
+      if(state.editingDaeenId === d.id){ html += renderDaeenEditForm(d); continue; }
+      const dd = daysAgo(d.lastEngaged);
+      const overdue = dd === null || dd >= 7;
+      const contacts = (state.contactsD[d.id] || []);
+      const expanded = state.expandedDaeenId === d.id;
+      const active = isDaeenActive(d.id);
+      html += '<div class="contact-card">';
+      html += '<div class="contact-top"><div><div class="contact-name"><span class="status-dot ' + (overdue?'overdue':'') + '"></span>' + escapeHtml(d.name) + '</div>';
+      if(d.region) html += '<div class="daeen-region">' + escapeHtml(d.region) + '</div>';
+      html += '<div class="contact-meta ' + (overdue?'overdue-text':'') + '">' + (dd===null?'not yet engaged':(dd===0?'engaged today':'engaged ' + dd + ' day' + (dd===1?'':'s') + ' ago')) + (methodLabel(d.lastEngagedMethod)?(' — ' + methodLabel(d.lastEngagedMethod)):'') + (overdue?' — check in':'') + '</div></div>' + (active?'<span class="ok-badge">active</span>':'<span class="flag-badge">inactive</span>') + '</div>';
+      if(d.notes) html += '<div class="notes-text">' + escapeHtml(d.notes) + '</div>';
+      html += '<div class="contact-actions">';
+      html += '<button class="small-link" data-action="engage" data-method="in_person" data-id="' + d.id + '">Log engagement (in person)</button>';
+      html += '<button class="small-link" data-action="engage" data-method="phone" data-id="' + d.id + '">Log engagement (phone)</button>';
+      html += '<button class="small-link" data-action="editdaeen" data-id="' + d.id + '">Edit</button>';
+      html += '<button class="danger-link" data-action="deletedaeen" data-id="' + d.id + '">Remove</button>';
+      html += '</div>';
+      html += '<div class="expand-toggle"><button class="small-link" data-action="toggleexpand" data-id="' + d.id + '">' + (expanded?'Hide':'View') + ' their contacts (' + contacts.length + ')</button></div>';
+
+      if(expanded){
+        html += '<div class="nested-block">';
+        if(!contacts.length && state.addingDaeenContact !== d.id) html += '<div class="empty-state">No contacts logged for this Daeen yet.</div>';
+        for(const c of contacts){
+          if(state.editingDaeenContactId === (d.id + ':' + c.id)){ html += renderContactForm(c, 'saveDaeenContact:' + d.id); continue; }
+          html += renderNestedContactCard(d.id, c);
+        }
+        if(state.addingDaeenContact === d.id) html += renderContactForm(null, 'saveDaeenContact:' + d.id);
+        html += '<button class="ghost" data-action="addDaeenContact" data-id="' + d.id + '">+ Log a contact for this Daeen</button>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    return html;
+  }
+
+  function renderNestedContactCard(daeenId, c){
+    const d = daysAgo(c.lastContact);
+    const overdue = d !== null && d >= 7;
+    const methodTxt = methodLabel(c.method);
+    let html = '<div class="contact-card nested">';
+    html += '<div class="contact-top"><div><div class="contact-name"><span class="status-dot ' + (overdue?'overdue':'') + '"></span>' + escapeHtml(c.name) + '</div>';
+    html += '<div class="contact-meta ' + (overdue?'overdue-text':'') + '">' + (d===null?'no contact logged':(d===0?'contacted today':d + ' day' + (d===1?'':'s') + ' ago')) + (methodTxt?(' — ' + methodTxt):'') + '</div></div></div>';
+    html += trailCaption(c.stage) + buildTrail(c.stage);
+    if(c.notes) html += '<div class="notes-text">' + escapeHtml(c.notes) + '</div>';
+    if(c.stage===3 && c.baiatInfo) html += '<div class="notes-text" style="background:var(--accent-soft); padding:8px 10px; border-radius:8px;"><b>Bai’at:</b> ' + escapeHtml(c.baiatInfo) + '</div>';
+    html += '<div class="contact-actions">';
+    html += '<button class="small-link" data-action="dcLogToday" data-method="in_person" data-daeenid="' + daeenId + '" data-id="' + c.id + '">Log in person</button>';
+    html += '<button class="small-link" data-action="dcLogToday" data-method="phone" data-daeenid="' + daeenId + '" data-id="' + c.id + '">Log by phone</button>';
+    html += '<button class="small-link" data-action="dcEdit" data-daeenid="' + daeenId + '" data-id="' + c.id + '">Edit</button>';
+    html += '<button class="danger-link" data-action="dcDelete" data-daeenid="' + daeenId + '" data-id="' + c.id + '">Delete</button>';
+    html += '</div></div>';
+    return html;
+  }
+
+  // ---------- MISSIONARY (Regional Leader): My Region ----------
+
+  function renderRegionTab(){
+    const myMissionaries = state.missionaries.filter(m=>m.regionalLeaderId===state.me.id);
+    let totalContacts=0, totalDaeen=0, totalBaiats=0;
+    for(const m of myMissionaries){
+      const metrics = computeMetrics(m.id);
+      totalContacts += metrics.personalContactsTotal + metrics.tablighTotal;
+      totalDaeen += metrics.daeenTotal;
+      totalBaiats += metrics.baiats;
+    }
+
+    const myRec = state.missionaries.find(x=>x.id===state.me.id);
+    const reportedCount = myMissionaries.filter(m=>hasReportedThisWeek(m.id)).length;
+    let html = '<div class="card"><div class="row-between"><div class="eyebrow">' + escapeHtml((myRec&&myRec.regionLabel)||'Your region') + '</div>' + periodToggleHtml() + '</div>';
+    html += '<div class="muted" style="margin-top:-4px; margin-bottom:6px;">' + reportedCount + ' of ' + myMissionaries.length + ' active this week</div>';
+    html += '<div class="metric-grid">';
+    html += metricTile(myMissionaries.length, 'Missionaries under you');
+    html += metricTile(totalDaeen, 'Daeen in your region');
+    html += metricTile(totalContacts, 'Total contacts');
+    html += metricTile(totalBaiats, "Bai'ats this month");
+    html += '</div></div>';
+
+    let regionContacts = [];
+    for(const m of myMissionaries){
+      regionContacts = regionContacts.concat(state.contactsM[m.id]||[]);
+      const theirDaeen = state.daeenRoster.filter(dd3=>dd3.missionaryId===m.id);
+      theirDaeen.forEach(dd3 => { regionContacts = regionContacts.concat(state.contactsD[dd3.id]||[]); });
+    }
+    const rHist = collectHistory(regionContacts);
+    const rBai = collectBaiatDates(regionContacts);
+    html += trendCard('Region activity', weekBuckets(rHist,8), monthBuckets(rBai,6), streakFromBuckets(weekBuckets(rHist,8)));
+
+    html += '<div class="card"><h2>Your missionaries</h2>';
+    if(!myMissionaries.length) html += '<div class="empty-state">No missionaries assigned to your region yet — ask National Access to assign them.</div>';
+    for(const m of myMissionaries){
+      const metrics = computeMetrics(m.id);
+      const groupDone = hasGroupReportThisWeek(m.id);
+      const reportedThisWeek = hasReportedThisWeek(m.id);
+      html += '<div class="missionary-block"><div class="row-between"><div class="name">' + escapeHtml(m.name) + '</div>';
+      html += reportedThisWeek ? '<span class="ok-badge">Reported this week</span>' : '<span class="flag-badge">Needs this week\u2019s update</span>';
+      html += '</div>';
+      html += '<div class="muted" style="margin-top:2px;">' + (groupDone?'group activity logged':'no group activity yet') + (metrics.daeenTotal - metrics.daeenReachedOut > 0 ? (' &middot; ' + (metrics.daeenTotal - metrics.daeenReachedOut) + ' Daeen not reached'):'') + '</div>';
+      html += '<div class="metric-grid" style="margin-top:8px;">';
+      html += metricTile(metrics.daeenReachedOut + '/' + metrics.daeenTotal, 'Daeen reached out to');
+      html += metricTile(metrics.personalContactsTotal, 'Personal contacts');
+      html += metricTile(metrics.baiats, "Bai'ats this month");
+      html += '</div></div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // ---------- Shared report (missionary + admin) ----------
+
+  function renderGoalsAndGroups(){
+    let html = '';
+
+    // ----- Missionary Bai'at goals -----
+    const withGoals = state.missionaries.map(m=>({m, ytd: baiatsYTDForMissionary(m.id), goal: m.target||10}));
+    const metGoal = withGoals.filter(x=>x.ytd >= x.goal).length;
+    const sumYtd = withGoals.reduce((s,x)=>s+x.ytd,0);
+    const sumGoal = withGoals.reduce((s,x)=>s+x.goal,0);
+    html += '<div class="card"><h2>Missionary Bai\'at goals (year to date)</h2>';
+    html += '<div class="muted" style="margin-bottom:10px;">' + metGoal + ' of ' + withGoals.length + ' missionaries have reached their goal</div>';
+    html += progressBarHtml(sumYtd, sumGoal, 'Combined progress');
+    const behind = withGoals.filter(x=>x.ytd < x.goal).sort((a,b)=> (a.ytd/Math.max(1,a.goal)) - (b.ytd/Math.max(1,b.goal)));
+    if(behind.length){
+      html += '<div class="nested-block"><div class="muted" style="margin-bottom:8px; font-weight:700;">Still working toward goal:</div>';
+      behind.forEach(x=> html += progressBarHtml(x.ytd, x.goal, x.m.name));
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // ----- Daeen annual Bai'at goals -----
+    const daeenMet = state.daeenRoster.filter(d=>daeenMetAnnualGoal(d.id)).length;
+    html += '<div class="card"><h2>Daeen Bai\'at goals (1 per year, year to date)</h2>';
+    html += progressBarHtml(daeenMet, state.daeenRoster.length, 'Daeen who have reached their goal');
+    html += '</div>';
+
+    // ----- Active Daeen goal -----
+    const activeDaeen = state.daeenRoster.filter(d=>isDaeenActive(d.id)).length;
+    html += '<div class="card"><h2>Active Daeen goal</h2>';
+    html += '<div class="muted" style="margin-bottom:10px;">Active means the Daeen or their missionary logged contact within the last ' + DAEEN_ACTIVE_WINDOW_DAYS + ' days — either the missionary reaching out to the Daeen, or the Daeen engaging their own contacts.</div>';
+    html += progressBarHtml(activeDaeen, state.daeenRoster.length, 'Daeen currently active');
+    const inactiveDaeen = state.daeenRoster.filter(d=>!isDaeenActive(d.id));
+    if(inactiveDaeen.length){
+      html += '<div class="nested-block"><div class="muted" style="margin-bottom:8px; font-weight:700;">Inactive — needs a check-in:</div>';
+      inactiveDaeen.forEach(d=>{
+        const m = state.missionaries.find(x=>x.id===d.missionaryId);
+        html += '<div class="preview-row">' + escapeHtml(d.name) + (m?(' — under ' + escapeHtml(m.name)):'') + '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // ----- By region -----
+    const leaders = state.missionaries.filter(m=>m.isRegionalLeader);
+    if(leaders.length){
+      html += '<div class="card"><h2>Progress by region</h2>';
+      leaders.forEach(rl=>{
+        const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id);
+        const ytd = team.reduce((s,m)=>s+baiatsYTDForMissionary(m.id),0);
+        const goal = team.reduce((s,m)=>s+(m.target||10),0);
+        html += progressBarHtml(ytd, goal, (rl.regionLabel||rl.name) + ' (' + team.length + ' missionaries)');
+      });
+      html += '</div>';
+    }
+
+    return html;
+  }
+
+  function renderReport(){
+    const stageTotals = [0,0,0,0];
+    let totalContacts=0, totalBaiats=0;
+    for(const m of state.missionaries){
+      for(const c of (state.contactsM[m.id]||[])){ stageTotals[c.stage]++; totalContacts++; if(c.stage===3 && inCurrentMonth(c.baiatDate)) totalBaiats++; }
+    }
+    for(const d of state.daeenRoster){
+      for(const c of (state.contactsD[d.id]||[])){ stageTotals[c.stage]++; totalContacts++; if(c.stage===3 && inCurrentMonth(c.baiatDate)) totalBaiats++; }
+    }
+    let allContacts = [];
+    for(const m of state.missionaries) allContacts = allContacts.concat(state.contactsM[m.id]||[]);
+    for(const d of state.daeenRoster) allContacts = allContacts.concat(state.contactsD[d.id]||[]);
+    const nHist = collectHistory(allContacts);
+    const nBai = collectBaiatDates(allContacts);
+
+    const reportedThisWeekCount = state.missionaries.filter(m=>hasReportedThisWeek(m.id)).length;
+    const weekStart = periodStartISO('week');
+    const baiatsThisWeek = allContacts.filter(c=>c.stage===3 && c.baiatDate && c.baiatDate>=weekStart).length;
+    const baiatsYearToDate = allContacts.filter(c=>c.stage===3 && inCurrentYear(c.baiatDate)).length;
+    const weekEndDate = new Date(weekStart + 'T00:00:00');
+    weekEndDate.setDate(weekEndDate.getDate()+6);
+
+    let html = '<div class="card"><h2>This week vs. year to date</h2>';
+    html += '<div class="muted" style="margin-bottom:10px;">Reporting week: ' + weekStart + ' through ' + weekEndDate.toISOString().slice(0,10) + ' (resets Tuesdays)</div>';
+    html += '<div class="metric-grid">';
+    html += metricTile(reportedThisWeekCount + '/' + state.missionaries.length, 'Missionaries reported this week');
+    html += metricTile(baiatsThisWeek, "Bai'ats this week");
+    html += metricTile(baiatsYearToDate, "Bai'ats year to date");
+    html += '</div></div>';
+
+    html += '<div class="card"><div class="row-between"><h2>National funnel</h2>' + periodToggleHtml() + '</div>';
+    html += '<div class="muted" style="margin:6px 0 12px;">' + state.missionaries.length + ' missionaries &middot; ' + state.daeenRoster.length + ' Daeen &middot; ' + totalContacts + ' total contacts &middot; ' + totalBaiats + " Bai'ats this month</div>";
+    const maxVal = Math.max(1, ...stageTotals);
+    for(let i=0;i<4;i++){
+      const w = Math.round(stageTotals[i]/maxVal*100);
+      html += '<div class="funnel-bar-row"><div class="funnel-label">' + escapeHtml(state.stageLabels[i]) + '</div><div class="funnel-track"><div class="funnel-fill" style="width:' + w + '%;"></div></div><div class="funnel-count">' + stageTotals[i] + '</div></div>';
+    }
+    html += '</div>';
+
+    html += trendCard('National activity', weekBuckets(nHist,8), monthBuckets(nBai,6), streakFromBuckets(weekBuckets(nHist,8)));
+
+    html += renderGoalsAndGroups();
+
+    html += '<div class="card"><div class="row-between"><h2>Reporting compliance — by missionary</h2><button class="ghost" id="copySummaryBtn">Copy Tuesday report</button></div>';
+    if(!state.missionaries.length) html += '<div class="empty-state">No missionaries registered yet.</div>';
+    const sorted = state.missionaries.slice().sort((a,b)=>{
+      return (hasReportedThisWeek(a.id)?0:1) - (hasReportedThisWeek(b.id)?0:1);
+    });
+    for(const m of sorted){
+      const metrics = computeMetrics(m.id);
+      const regionalLeader = m.regionalLeaderId ? state.missionaries.find(rl=>rl.id===m.regionalLeaderId) : null;
+      const reportedThisWeek = hasReportedThisWeek(m.id);
+      html += '<div class="missionary-block"><div class="row-between"><div><div class="name">' + escapeHtml(m.name) + (m.isRegionalLeader?' <span class="ok-badge" style="margin-left:6px;">' + escapeHtml(m.regionLabel||'Regional') + '</span>':'') + '</div>';
+      html += '<div class="muted" style="margin-top:2px;">' + ((m.groups&&m.groups.length)?escapeHtml(m.groups.join(', ')):'no Special Tabligh Task set') + (regionalLeader?(' &middot; reports to ' + escapeHtml(regionalLeader.name)):'') + '</div></div>';
+      html += reportedThisWeek ? '<span class="ok-badge">Reported this week</span>' : '<span class="flag-badge">Needs this week\u2019s update</span>';
+      html += '</div>';
+      html += '<div class="metric-grid" style="margin-top:10px;">';
+      html += metricTile(metrics.daeenReachedOut + '/' + metrics.daeenTotal, 'Daeen reached out to');
+      html += metricTile(metrics.personalContactsTotal, 'Personal contacts');
+      html += metricTile(metrics.baiats, "Bai'ats this month");
+      html += metricTile(metrics.tablighReachedOut + '/' + metrics.tablighTotal, 'Contacts reached by Daeen');
+      html += '</div></div>';
+    }
+    html += '</div>';
+
+    html += '<div class="card" id="summaryCard" style="display:none;"><h2>Report text</h2><div class="muted">Copy this into your group chat for the weekly review.</div><div class="summary-box" id="summaryText"></div></div>';
+    return html;
+  }
+
+  function weeklySummaryText(){
+    let lines = ['SPIRIT OF SADIQ — TUESDAY REPORT', new Date().toDateString(), ''];
+    for(const m of state.missionaries){
+      const metrics = computeMetrics(m.id);
+      const groupDone = hasGroupReportThisWeek(m.id);
+      lines.push(m.name + ' (' + ((m.groups&&m.groups.length)?m.groups.join(', '):'no group') + '):');
+      lines.push('  Daeen reached out to: ' + metrics.daeenReachedOut + ' of ' + metrics.daeenTotal);
+      lines.push('  Personal contacts: ' + metrics.personalContactsTotal);
+      lines.push("  Bai'ats this month: " + metrics.baiats);
+      lines.push('  Contacts reached by Daeen: ' + metrics.tablighReachedOut + ' of ' + metrics.tablighTotal);
+      lines.push('  Group activity this week: ' + (groupDone ? 'logged' : 'NOT logged yet'));
+      lines.push('  Active this week: ' + (hasReportedThisWeek(m.id) ? 'yes' : 'NO ACTIVITY'));
+      lines.push('');
+    }
+    return lines.join('\n');
+  }
+
+  // ---------- ADMIN app ----------
+
+  function parseBulkImport(text){
+    const lines = text.split('\n').map(l=>l.trim()).filter(l=>l.length);
+    let rows = [];
+    for(const line of lines){
+      const parts = line.split(/\t|,/).map(p=>p.trim());
+      if(rows.length===0 && parts[0] && parts[0].toLowerCase()==='name') continue;
+      const name = parts[0]||'';
+      if(!name) continue;
+      const region = parts[1]||'';
+      const missName = parts[2]||'';
+      let missionaryId = '';
+      if(missName){
+        const mm = state.missionaries.find(m=>m.name.toLowerCase()===missName.toLowerCase());
+        if(mm) missionaryId = mm.id;
+      }
+      rows.push({name, region, missName, missionaryId});
+    }
+    return rows;
+  }
+  function previewImport(){
+    state.bulkImportPreview = parseBulkImport(state.bulkImportText);
+    render();
+  }
+  async function confirmImport(){
+    const rows = state.bulkImportPreview || [];
+    for(const row of rows){
+      const d = {id: uid(), name: row.name, region: row.region, missionaryId: row.missionaryId, notes:'', lastEngaged: null};
+      state.daeenRoster.push(d);
+      state.contactsD[d.id] = [];
+    }
+    await saveRoster();
+    state.bulkImportPreview = null;
+    state.bulkImportText = '';
+    render();
+  }
+  function cancelImport(){ state.bulkImportPreview = null; render(); }
+
+  function parseBulkImportMissionaries(text){
+    const lines = text.split('\n').map(l=>l.trim()).filter(l=>l.length);
+    let rows = [];
+    for(const line of lines){
+      const parts = line.split(',').map(p=>p.trim());
+      if(rows.length===0 && parts[0] && parts[0].toLowerCase()==='name') continue;
+      const name = parts[0]||'';
+      if(!name) continue;
+      const regionLabel = parts[1]||'';
+      const leaderName = parts[2]||'';
+      const groups = (parts[3]||'').split(';').map(g=>g.trim()).filter(Boolean);
+      rows.push({name, regionLabel, leaderName, groups});
+    }
+    return rows;
+  }
+  function previewImportMissionaries(){
+    state.bulkMissionaryPreview = parseBulkImportMissionaries(state.bulkMissionaryText);
+    render();
+  }
+  function cancelImportMissionaries(){ state.bulkMissionaryPreview = null; render(); }
+  async function confirmImportMissionaries(){
+    const rows = state.bulkMissionaryPreview || [];
+    const byName = {};
+    state.missionaries.forEach(m=> byName[m.name.toLowerCase()] = m);
+    rows.forEach(row=>{
+      let m = byName[row.name.toLowerCase()];
+      if(!m){
+        m = {id: uid(), name: row.name, target: 10, groups: [], isRegionalLeader:false, regionalLeaderId:'', regionLabel:''};
+        state.missionaries.push(m);
+        state.contactsM[m.id] = [];
+        byName[row.name.toLowerCase()] = m;
+      }
+    });
+    rows.forEach(row=>{
+      const m = byName[row.name.toLowerCase()];
+      if(!row.leaderName){
+        m.isRegionalLeader = true;
+        m.regionalLeaderId = '';
+        if(row.regionLabel) m.regionLabel = row.regionLabel;
+      } else {
+        const leader = byName[row.leaderName.toLowerCase()];
+        if(leader) m.regionalLeaderId = leader.id;
+      }
+      if(row.groups && row.groups.length) m.groups = row.groups;
+    });
+    await saveMissionaries();
+    state.bulkMissionaryPreview = null;
+    state.bulkMissionaryText = '';
+    render();
+  }
+
+  async function addMissionaryAdmin(){
+    const name = state.newName.trim();
+    if(!name){ state.error='Enter a name.'; render(); return; }
+    if(state.missionaries.find(m=>m.name.toLowerCase()===name.toLowerCase())){ state.error='That missionary already exists.'; render(); return; }
+    const m = {id: uid(), name, target: 10, groups:[], isRegionalLeader:false, regionalLeaderId:''};
+    state.missionaries.push(m);
+    state.contactsM[m.id] = [];
+    await saveMissionaries();
+    state.newName=''; state.error='';
+    render();
+  }
+  async function removeMissionaryAdmin(id){
+    if(!confirm('Remove this missionary? Their Daeen will need reassigning.')) return;
+    state.missionaries = state.missionaries.filter(m=>m.id!==id);
+    await saveMissionaries();
+    render();
+  }
+  async function reassignDaeen(daeenId, missionaryId){
+    const d = state.daeenRoster.find(x=>x.id===daeenId);
+    if(d){ d.missionaryId = missionaryId; await saveRoster(); render(); }
+  }
+  async function toggleRegionalLeader(id){
+    const m = state.missionaries.find(x=>x.id===id);
+    if(!m) return;
+    m.isRegionalLeader = !m.isRegionalLeader;
+    if(m.isRegionalLeader) m.regionalLeaderId = '';
+    await saveMissionaries(); render();
+  }
+  async function assignRegionalLeader(missionaryId, regionalLeaderId){
+    const m = state.missionaries.find(x=>x.id===missionaryId);
+    if(m){ m.regionalLeaderId = regionalLeaderId; await saveMissionaries(); render(); }
+  }
+  async function removeDaeenAdmin(id){
+    if(!confirm('Remove this Daeen from the roster?')) return;
+    state.daeenRoster = state.daeenRoster.filter(d=>d.id!==id);
+    await gsSet('daeen-roster', JSON.stringify(state.daeenRoster));
+    render();
+  }
+
+  function renderAdminMissionaries(){
+    let html = '<div class="card"><h2>Add a missionary</h2>';
+    html += '<div class="field"><label>Name</label><input type="text" id="mName" value="' + escapeHtml(state.newName) + '" placeholder="Missionary name"></div>';
+    html += '<button class="primary" id="addMissionaryBtn">Add missionary</button>';
+    if(state.error) html += '<div class="error-text">' + escapeHtml(state.error) + '</div>';
+    html += '</div>';
+
+    html += '<div class="card"><h2>Bulk import missionaries</h2>';
+    html += '<div class="import-instructions">Paste one missionary per line: <code>Name, Region label, Leader name, Groups</code>. Leave <b>Leader name</b> blank for the person who leads that region (their <b>Region label</b> becomes their region\'s display name). For everyone else, put their leader\'s exact name. <b>Groups</b> is optional, separated by semicolons, e.g. <code>Social Media;Muslim Sunrise</code>. Re-running this with the same names updates them instead of duplicating.</div>';
+    if(!state.bulkMissionaryPreview){
+      html += '<textarea class="bulk-import" id="bulkMissionaryTextArea" placeholder="Luqman Gondal, Northeast &amp; NY Metro, , \nJaleese Ahmad Dar, , Luqman Gondal, Social Media;Speaker\'s Corner">' + escapeHtml(state.bulkMissionaryText) + '</textarea>';
+      html += '<div class="form-actions"><button class="primary" id="previewMissionaryImportBtn">Preview import</button></div>';
+    } else {
+      const rows = state.bulkMissionaryPreview;
+      const leaders = rows.filter(r=>!r.leaderName).length;
+      html += '<div class="muted" style="margin-bottom:10px;">' + rows.length + ' rows parsed &middot; ' + leaders + ' regional leaders &middot; ' + (rows.length-leaders) + ' regular missionaries</div>';
+      html += '<div style="max-height:240px; overflow-y:auto; margin-bottom:10px;">';
+      for(const r of rows.slice(0,60)){
+        html += '<div class="preview-row">' + escapeHtml(r.name) + (r.leaderName ? (' — reports to ' + escapeHtml(r.leaderName)) : (' — <b>leads ' + escapeHtml(r.regionLabel||'(unnamed region)') + '</b>')) + (r.groups.length ? (' — ' + escapeHtml(r.groups.join(', '))) : '') + '</div>';
+      }
+      if(rows.length>60) html += '<div class="muted" style="margin-top:6px;">…and ' + (rows.length-60) + ' more</div>';
+      html += '</div>';
+      html += '<div class="form-actions"><button class="primary" id="confirmMissionaryImportBtn">Confirm — add/update ' + rows.length + '</button><button class="ghost" id="cancelMissionaryImportBtn">Cancel</button></div>';
+    }
+    html += '</div>';
+
+    html += '<div class="card"><h2>All missionaries</h2>';
+    html += '<div class="muted" style="margin-bottom:10px;">Mark the 6–7 who lead a region, then assign every other missionary to report to one of them.</div>';
+    if(!state.missionaries.length) html += '<div class="empty-state">None yet.</div>';
+    const regionalLeaders = state.missionaries.filter(m=>m.isRegionalLeader);
+    html += '<table class="admin-table"><thead><tr><th>Name</th><th>Region</th><th>Tabligh Task</th><th>Regional?</th><th>Reports to</th><th>Daeen</th><th>Activity</th><th></th></tr></thead><tbody>';
+    for(const m of state.missionaries){
+      const count = state.daeenRoster.filter(d=>d.missionaryId===m.id).length;
+      const groupDone = hasGroupReportThisWeek(m.id);
+      html += '<tr><td>' + escapeHtml(m.name) + '</td><td>' + escapeHtml(m.regionLabel||'—') + '</td><td>' + ((m.groups&&m.groups.length)?escapeHtml(m.groups.join(', ')):'—') + '</td>';
+      html += '<td><input type="checkbox" data-action="toggleRL" data-id="' + m.id + '" ' + (m.isRegionalLeader?'checked':'') + '></td>';
+      if(m.isRegionalLeader){ html += '<td>—</td>'; }
+      else {
+        html += '<td><select data-action="assignRL" data-id="' + m.id + '"><option value="">unassigned</option>';
+        for(const rl of regionalLeaders) html += '<option value="' + rl.id + '" ' + (m.regionalLeaderId===rl.id?'selected':'') + '>' + escapeHtml(rl.name) + '</option>';
+        html += '</select></td>';
+      }
+      html += '<td>' + count + '</td><td>' + (groupDone?'✓':'—') + '</td><td><button class="danger-link" data-action="removeMissionary" data-id="' + m.id + '">Remove</button></td></tr>';
+    }
+    html += '</tbody></table></div>';
+    return html;
+  }
+
+  function renderAdminDaeen(){
+    let html = '<div class="card"><h2>Bulk import Daeen</h2>';
+    html += '<div class="import-instructions">Paste one Daeen per line: <code>Name, Jamaat, Missionary Name</code>. Jamaat and missionary are optional — leave them blank and assign later. Missionary names must match an existing missionary exactly (case-insensitive).</div>';
+    if(!state.bulkImportPreview){
+      html += '<textarea class="bulk-import" id="bulkText" placeholder="Ahmed Khan, Kingston, ' + (state.missionaries[0]?escapeHtml(state.missionaries[0].name):'Missionary Name') + '">' + escapeHtml(state.bulkImportText) + '</textarea>';
+      html += '<div class="form-actions"><button class="primary" id="previewImportBtn">Preview import</button></div>';
+    } else {
+      const rows = state.bulkImportPreview;
+      const matched = rows.filter(r=>r.missionaryId).length;
+      html += '<div class="muted" style="margin-bottom:10px;">' + rows.length + ' rows parsed &middot; ' + matched + ' matched to a missionary &middot; ' + (rows.length-matched) + ' unassigned (fix later below)</div>';
+      html += '<div style="max-height:240px; overflow-y:auto; margin-bottom:10px;">';
+      for(const r of rows.slice(0,50)){
+        html += '<div class="preview-row">' + escapeHtml(r.name) + (r.region?(' — ' + escapeHtml(r.region)):'') + ' — ' + (r.missionaryId ? escapeHtml(state.missionaries.find(m=>m.id===r.missionaryId).name) : '<span style="color:var(--warn); font-weight:600;">unassigned</span>') + '</div>';
+      }
+      if(rows.length>50) html += '<div class="muted" style="margin-top:6px;">…and ' + (rows.length-50) + ' more</div>';
+      html += '</div>';
+      html += '<div class="form-actions"><button class="primary" id="confirmImportBtn">Confirm — add ' + rows.length + ' Daeen</button><button class="ghost" id="cancelImportBtn">Cancel</button></div>';
+    }
+    html += '</div>';
+
+    const filtered = state.daeenRoster.filter(d=>{
+      if(state.daeenFilterUnassigned && d.missionaryId) return false;
+      return !state.searchText || d.name.toLowerCase().includes(state.searchText.toLowerCase());
+    });
+    html += '<div class="card"><div class="row-between"><h2>All Daeen (' + state.daeenRoster.length + ')</h2>';
+    html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="filterUnassigned" ' + (state.daeenFilterUnassigned?'checked':'') + '> unassigned only</label>';
+    html += '</div>';
+    html += '<div class="search-box"><input type="text" id="adminDaeenSearch" placeholder="Search Daeen…" value="' + escapeHtml(state.searchText) + '"></div>';
+    html += '<table class="admin-table"><thead><tr><th>Name</th><th>Jamaat</th><th>Missionary</th><th></th></tr></thead><tbody>';
+    for(const d of filtered){
+      html += '<tr><td>' + escapeHtml(d.name) + '</td><td>' + escapeHtml(d.region||'—') + '</td><td><select data-action="reassign" data-id="' + d.id + '"><option value="">unassigned</option>';
+      for(const m of state.missionaries) html += '<option value="' + m.id + '" ' + (m.id===d.missionaryId?'selected':'') + '>' + escapeHtml(m.name) + '</option>';
+      html += '</select></td><td><button class="danger-link" data-action="removeDaeen" data-id="' + d.id + '">Remove</button></td></tr>';
+    }
+    html += '</tbody></table></div>';
+    return html;
+  }
+
+  function buildBackupObject(){
+    return {
+      exportedAt: todayStr(),
+      admins: state.admins,
+      missionaries: state.missionaries,
+      daeenRoster: state.daeenRoster,
+      contactsM: state.contactsM,
+      contactsD: state.contactsD,
+      groupReports: state.groupReports,
+      stageLabels: state.stageLabels
+    };
+  }
+  function exportBackup(){
+    const data = buildBackupObject();
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'spirit-of-sadiq-backup-' + todayStr() + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=> URL.revokeObjectURL(url), 1000);
+  }
+  async function importBackup(data){
+    state.admins = data.admins || [];
+    state.missionaries = data.missionaries || [];
+    state.daeenRoster = data.daeenRoster || [];
+    state.contactsM = data.contactsM || {};
+    state.contactsD = data.contactsD || {};
+    state.groupReports = data.groupReports || {};
+    if(data.stageLabels) state.stageLabels = data.stageLabels;
+
+    await saveAdmins();
+    await saveMissionaries();
+    await saveRoster();
+    for(const id in state.contactsM) await saveContactsM(id);
+    for(const id in state.contactsD) await saveContactsD(id);
+    for(const id in state.groupReports) await saveGroupReports(id);
+    await gsSet('stage-labels', JSON.stringify(state.stageLabels));
+
+    state.error = '';
+    render();
+  }
+  function renderAdminBackup(){
+    let html = '<div class="card"><h2>Download a backup</h2>';
+    html += '<div class="muted">Saves everything — missionaries, Daeen, contacts, group reports — into one file on your device.</div>';
+    html += '<div style="margin-top:12px;"><button class="primary" id="exportBackupBtn">Download backup (.json)</button></div>';
+    html += '</div>';
+    html += '<div class="card"><h2>Restore from a backup</h2>';
+    html += '<div class="muted" style="margin-bottom:10px;">This replaces everything currently in the app with what\'s in the file.</div>';
+    html += '<input type="file" id="importFileInput" accept="application/json">';
+    if(state.error) html += '<div class="error-text">' + escapeHtml(state.error) + '</div>';
+    html += '</div>';
+    return html;
+  }
+
+  function getMissionaryRegionLabel(m){
+    if(!m) return '';
+    if(m.isRegionalLeader) return m.regionLabel || '';
+    const rl = state.missionaries.find(x=>x.id===m.regionalLeaderId);
+    return rl ? (rl.regionLabel || rl.name) : '';
+  }
+
+  function collectAllBaiats(){
+    let rows = [];
+    for(const m of state.missionaries){
+      const region = getMissionaryRegionLabel(m);
+      for(const c of (state.contactsM[m.id]||[])){
+        if(c.stage===3 && c.baiatDate) rows.push({missionary:m.name, region, contactName:c.name, baiatDate:c.baiatDate, info:c.baiatInfo||'', via:''});
+      }
+    }
+    for(const d of state.daeenRoster){
+      const m = state.missionaries.find(x=>x.id===d.missionaryId);
+      const region = m ? getMissionaryRegionLabel(m) : '';
+      for(const c of (state.contactsD[d.id]||[])){
+        if(c.stage===3 && c.baiatDate) rows.push({missionary: m?m.name:'(unassigned)', region, contactName:c.name, baiatDate:c.baiatDate, info:c.baiatInfo||'', via:d.name});
+      }
+    }
+    return rows.sort((a,b)=> (b.baiatDate||'').localeCompare(a.baiatDate||''));
+  }
+
+  function renderAdminBaiats(){
+    const rows = collectAllBaiats();
+    let html = '<div class="card"><h2>All Bai\'ats</h2>';
+    html += '<div class="muted" style="margin-bottom:10px;">' + rows.length + ' total. Full names and details — National Access only. Regional Leaders and the National Report only see counts.</div>';
+    if(!rows.length) html += '<div class="empty-state">No Bai\'ats recorded yet.</div>';
+    else{
+      html += '<table class="admin-table"><thead><tr><th>Date</th><th>Name</th><th>Missionary</th><th>Region</th><th>Details</th></tr></thead><tbody>';
+      rows.forEach(r=>{
+        html += '<tr><td>' + escapeHtml(r.baiatDate) + '</td><td>' + escapeHtml(r.contactName) + '</td><td>' + escapeHtml(r.missionary) + (r.via?(' <span class="muted">(via ' + escapeHtml(r.via) + ')</span>'):'') + '</td><td>' + escapeHtml(r.region||'—') + '</td><td>' + escapeHtml(r.info||'—') + '</td></tr>';
+      });
+      html += '</tbody></table>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderAdminApp(){
+    let html = '<nav class="tabs">';
+    html += '<button class="' + (state.tab==='report'?'active':'') + '" id="tabReport">National Report</button>';
+    html += '<button class="' + (state.tab==='baiats'?'active':'') + '" id="tabBaiats">Bai\'ats</button>';
+    html += '<button class="' + (state.tab==='missionaries'?'active':'') + '" id="tabMissionaries">Missionaries</button>';
+    html += '<button class="' + (state.tab==='alldaeen'?'active':'') + '" id="tabAllDaeen">All Daeen</button>';
+    html += '<button class="' + (state.tab==='backup'?'active':'') + '" id="tabBackup">Backup</button>';
+    html += '</nav>';
+    if(state.tab==='report') return html + renderReport();
+    if(state.tab==='baiats') return html + renderAdminBaiats();
+    if(state.tab==='missionaries') return html + renderAdminMissionaries();
+    if(state.tab==='backup') return html + renderAdminBackup();
+    return html + renderAdminDaeen();
+  }
+
+  // ---------- master render ----------
+
+  function render(){
+    if(state.loading){ root.innerHTML = '<div class="app"><div class="loading">Loading…</div></div>'; return; }
+    if(!state.me){ root.innerHTML = '<div class="app">' + renderSetup() + '</div>'; attachSetupHandlers(); return; }
+
+    const roleLabel = state.me.role==='missionary'?'Missionary':'National Access';
+    let html = '<div class="app">';
+    html += '<header class="top"><div class="brand">Spirit of Sadiq<small>Missionary Reporting</small></div>';
+    html += '<div class="identity"><span class="role-tag">' + roleLabel + '</span><div class="who">' + escapeHtml(state.me.name) + '</div><button id="switchBtn">switch person</button></div></header>';
+
+    if(state.me.role === 'missionary'){
+      const myRec = state.missionaries.find(m=>m.id===state.me.id);
+      const isRL = myRec && myRec.isRegionalLeader;
+      html += '<nav class="tabs">';
+      html += '<button class="' + (state.tab==='mine'?'active':'') + '" id="tabMine">My Contacts</button>';
+      html += '<button class="' + (state.tab==='daeen'?'active':'') + '" id="tabDaeen">My Daeen</button>';
+      if(isRL) html += '<button class="' + (state.tab==='region'?'active':'') + '" id="tabRegion">My Region</button>';
+      html += '</nav>';
+      if(state.tab==='daeen') html += renderDaeenTab();
+      else if(state.tab==='region' && isRL) html += renderRegionTab();
+      else html += renderMine();
+    } else {
+      html += renderAdminApp();
+    }
+
+    html += '</div>';
+    root.innerHTML = html;
+    attachMainHandlers();
+  }
+
+  function attachMainHandlers(){
+    const switchBtn = document.getElementById('switchBtn');
+    if(switchBtn) switchBtn.addEventListener('click', switchIdentity);
+
+    const tabMine = document.getElementById('tabMine');
+    if(tabMine) tabMine.addEventListener('click', ()=>{ state.tab='mine'; state.searchText=''; render(); });
+    const tabDaeen = document.getElementById('tabDaeen');
+    if(tabDaeen) tabDaeen.addEventListener('click', ()=>{ state.tab='daeen'; state.searchText=''; render(); });
+    const tabRegion = document.getElementById('tabRegion');
+    if(tabRegion) tabRegion.addEventListener('click', ()=>{ state.tab='region'; render(); });
+    const tabReport = document.getElementById('tabReport');
+    if(tabReport) tabReport.addEventListener('click', ()=>{ state.tab='report'; render(); });
+    const tabBaiats = document.getElementById('tabBaiats');
+    if(tabBaiats) tabBaiats.addEventListener('click', ()=>{ state.tab='baiats'; render(); });
+    const tabMissionaries = document.getElementById('tabMissionaries');
+    if(tabMissionaries) tabMissionaries.addEventListener('click', ()=>{ state.tab='missionaries'; state.error=''; render(); });
+    const tabAllDaeen = document.getElementById('tabAllDaeen');
+    if(tabAllDaeen) tabAllDaeen.addEventListener('click', ()=>{ state.tab='alldaeen'; state.searchText=''; render(); });
+    const tabBackup = document.getElementById('tabBackup');
+    if(tabBackup) tabBackup.addEventListener('click', ()=>{ state.tab='backup'; state.error=''; render(); });
+
+    root.querySelectorAll('[data-period]').forEach(b=> b.addEventListener('click', ()=>{ state.period = b.getAttribute('data-period'); render(); }));
+
+    const targetInput = document.getElementById('targetInput');
+    if(targetInput) targetInput.addEventListener('change', e=>updateTarget(e.target.value));
+
+    const addContactBtn = document.getElementById('addContactBtn');
+    if(addContactBtn) addContactBtn.addEventListener('click', ()=>{ state.addingContact=true; state.editingContactId=null; render(); });
+    const addDaeenBtn = document.getElementById('addDaeenBtn');
+    if(addDaeenBtn) addDaeenBtn.addEventListener('click', ()=>{ state.addingDaeen=true; state.newName=''; state.newRegion=''; state.error=''; render(); });
+
+    const editGroupsBtn = document.getElementById('editGroupsBtn');
+    if(editGroupsBtn) editGroupsBtn.addEventListener('click', ()=>{ state.editingGroups = !state.editingGroups; render(); });
+    const saveGroupsBtn = document.getElementById('saveGroupsBtn');
+    if(saveGroupsBtn) saveGroupsBtn.addEventListener('click', ()=>{
+      const checked = Array.from(root.querySelectorAll('.editGroupCheck:checked')).map(cb=>cb.value);
+      state.editingGroups = false;
+      editGroups(checked);
+    });
+    const addGroupReportBtn = document.getElementById('addGroupReportBtn');
+    if(addGroupReportBtn) addGroupReportBtn.addEventListener('click', ()=>{ state.addingGroupReport = true; render(); });
+    const cancelGroupReportBtn = document.getElementById('cancelGroupReportBtn');
+    if(cancelGroupReportBtn) cancelGroupReportBtn.addEventListener('click', ()=>{ state.addingGroupReport = false; render(); });
+    const saveGroupReportBtn = document.getElementById('saveGroupReportBtn');
+    if(saveGroupReportBtn) saveGroupReportBtn.addEventListener('click', ()=>{
+      const date = document.getElementById('grDate').value || todayStr();
+      const groupSelect = document.getElementById('grGroup');
+      const m = state.missionaries.find(r=>r.id===state.me.id);
+      const group = groupSelect ? groupSelect.value : ((m.groups||[])[0] || '');
+      const notes = document.getElementById('grNotes').value.trim();
+      if(!notes){ alert('Please describe what you did.'); return; }
+      addGroupReport({date, group, notes});
+    });
+    root.querySelectorAll('[data-action="deleteGroupReport"]').forEach(b=> b.addEventListener('click', ()=>{
+      if(confirm('Delete this activity entry?')) deleteGroupReport(b.getAttribute('data-id'));
+    }));
+
+    const daeenSearch = document.getElementById('daeenSearch');
+    if(daeenSearch) daeenSearch.addEventListener('input', e=>{ state.searchText = e.target.value; render(); });
+
+    root.querySelectorAll('[data-action="logtoday"]').forEach(b=> b.addEventListener('click', ()=> updateContact(b.getAttribute('data-id'), {lastContact: todayStr(), method: b.getAttribute('data-method')})));
+    root.querySelectorAll('[data-action="advance"]').forEach(b=> b.addEventListener('click', ()=> {
+      const list = state.contactsM[state.me.id];
+      const c = (list||[]).find(x=>x.id===b.getAttribute('data-id'));
+      if(c && c.stage<3){
+        const newStage = c.stage+1;
+        updateContact(c.id, {stage:newStage}).then(()=>{
+          if(newStage===3){ state.editingContactId = c.id; render(); }
+        });
+      }
+    }));
+    root.querySelectorAll('[data-action="edit"]').forEach(b=> b.addEventListener('click', ()=>{ state.editingContactId=b.getAttribute('data-id'); state.addingContact=false; render(); }));
+    root.querySelectorAll('[data-action="delete"]').forEach(b=> b.addEventListener('click', ()=>{ if(confirm('Delete this contact?')) deleteContact(b.getAttribute('data-id')); }));
+    root.querySelectorAll('[data-action="cancel"]').forEach(b=> b.addEventListener('click', ()=>{ state.addingContact=false; state.editingContactId=null; render(); }));
+    root.querySelectorAll('[data-action="save"]').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        const name = document.getElementById('fName').value.trim();
+        const notes = document.getElementById('fNotes').value.trim();
+        const stage = parseInt(document.getElementById('fStage').value);
+        const lastContact = document.getElementById('fDate').value || todayStr();
+        const method = document.getElementById('fMethod').value;
+        const baiatInfo = document.getElementById('fBaiatInfo').value.trim();
+        if(!name){ alert('Please enter a name.'); return; }
+        const editId = b.getAttribute('data-editid');
+        if(editId) updateContact(editId, {name,notes,stage,lastContact,method,baiatInfo}); else addContact({name,notes,stage,lastContact,method,baiatInfo});
+      });
+    });
+
+    root.querySelectorAll('[data-action="engage"]').forEach(b=> b.addEventListener('click', ()=> logDaeenEngagement(b.getAttribute('data-id'), b.getAttribute('data-method'))));
+    root.querySelectorAll('[data-action="editdaeen"]').forEach(b=> b.addEventListener('click', ()=>{ state.editingDaeenId=b.getAttribute('data-id'); render(); }));
+    root.querySelectorAll('[data-action="deletedaeen"]').forEach(b=> b.addEventListener('click', ()=>{ if(confirm('Remove this Daeen?')) deleteDaeenEntry(b.getAttribute('data-id')); }));
+    root.querySelectorAll('[data-action="toggleexpand"]').forEach(b=> b.addEventListener('click', ()=>{
+      const id = b.getAttribute('data-id');
+      state.expandedDaeenId = state.expandedDaeenId===id ? null : id;
+      state.addingDaeenContact = null;
+      render();
+    }));
+    root.querySelectorAll('[data-action="addDaeenContact"]').forEach(b=> b.addEventListener('click', ()=>{ state.addingDaeenContact = b.getAttribute('data-id'); render(); }));
+    root.querySelectorAll('[data-action="cancelDaeen"]').forEach(b=> b.addEventListener('click', ()=>{ state.addingDaeen=false; state.editingDaeenId=null; render(); }));
+    root.querySelectorAll('[data-action="saveDaeen"]').forEach(b=> b.addEventListener('click', ()=>{
+      state.newName = document.getElementById('dName').value.trim();
+      state.newRegion = document.getElementById('dRegion').value.trim();
+      addDaeenAssigned();
+    }));
+    root.querySelectorAll('[data-action="saveDaeenEdit"]').forEach(b=> b.addEventListener('click', ()=>{
+      const id = b.getAttribute('data-editid');
+      const name = document.getElementById('dName').value.trim();
+      const region = document.getElementById('dRegion').value.trim();
+      const notes = document.getElementById('dNotes').value.trim();
+      if(!name){ alert('Please enter a name.'); return; }
+      updateDaeenEntry(id, {name, region, notes});
+    }));
+
+    root.querySelectorAll('[data-action="dcLogToday"]').forEach(b=> b.addEventListener('click', ()=>{
+      const daeenId=b.getAttribute('data-daeenid'), id=b.getAttribute('data-id');
+      const c = (state.contactsD[daeenId]||[]).find(x=>x.id===id);
+      if(c){ c.lastContact = todayStr(); c.method = b.getAttribute('data-method'); stampHistory(c, c.lastContact); saveContactsD(daeenId).then(render); }
+    }));
+    root.querySelectorAll('[data-action="dcEdit"]').forEach(b=> b.addEventListener('click', ()=>{
+      state.editingDaeenContactId = b.getAttribute('data-daeenid') + ':' + b.getAttribute('data-id');
+      render();
+    }));
+    root.querySelectorAll('[data-action="dcDelete"]').forEach(b=> b.addEventListener('click', ()=>{
+      if(!confirm('Delete this contact?')) return;
+      const daeenId=b.getAttribute('data-daeenid'), id=b.getAttribute('data-id');
+      state.contactsD[daeenId] = (state.contactsD[daeenId]||[]).filter(c=>c.id!==id);
+      saveContactsD(daeenId).then(render);
+    }));
+    root.querySelectorAll('[data-action^="saveDaeenContact:"]').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        const daeenId = b.getAttribute('data-action').split(':')[1];
+        const name = document.getElementById('fName').value.trim();
+        const notes = document.getElementById('fNotes').value.trim();
+        const stage = parseInt(document.getElementById('fStage').value);
+        const lastContact = document.getElementById('fDate').value || todayStr();
+        const method = document.getElementById('fMethod').value;
+        const baiatInfo = document.getElementById('fBaiatInfo').value.trim();
+        if(!name){ alert('Please enter a name.'); return; }
+        const editId = b.getAttribute('data-editid');
+        const list = state.contactsD[daeenId] || (state.contactsD[daeenId]=[]);
+        if(editId){
+          const c = list.find(x=>x.id===editId);
+          if(c){ Object.assign(c, {name,notes,stage,lastContact,method,baiatInfo}); stampBaiat(c, lastContact); stampHistory(c, lastContact); }
+          state.editingDaeenContactId = null;
+        } else {
+          const c = {id:uid(), name, notes, stage, lastContact, method, baiatInfo, created: todayStr()};
+          stampBaiat(c, lastContact); stampHistory(c, lastContact);
+          list.push(c);
+          state.addingDaeenContact = null;
+        }
+        saveContactsD(daeenId).then(render);
+      });
+    });
+
+    const copyBtn = document.getElementById('copySummaryBtn');
+    if(copyBtn){
+      copyBtn.addEventListener('click', ()=>{
+        const text = weeklySummaryText();
+        const card = document.getElementById('summaryCard');
+        const box = document.getElementById('summaryText');
+        card.style.display = 'block';
+        box.textContent = text;
+        if(navigator.clipboard) navigator.clipboard.writeText(text).catch(()=>{});
+      });
+    }
+
+    const mNameInput = document.getElementById('mName');
+    if(mNameInput) mNameInput.addEventListener('input', e=>{ state.newName = e.target.value; });
+    const addMissionaryBtn = document.getElementById('addMissionaryBtn');
+    if(addMissionaryBtn) addMissionaryBtn.addEventListener('click', addMissionaryAdmin);
+    root.querySelectorAll('[data-action="removeMissionary"]').forEach(b=> b.addEventListener('click', ()=> removeMissionaryAdmin(b.getAttribute('data-id'))));
+    root.querySelectorAll('[data-action="toggleRL"]').forEach(cb=> cb.addEventListener('change', ()=> toggleRegionalLeader(cb.getAttribute('data-id'))));
+    root.querySelectorAll('[data-action="assignRL"]').forEach(sel=> sel.addEventListener('change', e=> assignRegionalLeader(sel.getAttribute('data-id'), e.target.value)));
+
+    const bulkText = document.getElementById('bulkText');
+    if(bulkText) bulkText.addEventListener('input', e=>{ state.bulkImportText = e.target.value; });
+    const previewImportBtn = document.getElementById('previewImportBtn');
+    if(previewImportBtn) previewImportBtn.addEventListener('click', previewImport);
+    const confirmImportBtn = document.getElementById('confirmImportBtn');
+    if(confirmImportBtn) confirmImportBtn.addEventListener('click', confirmImport);
+    const cancelImportBtn = document.getElementById('cancelImportBtn');
+    if(cancelImportBtn) cancelImportBtn.addEventListener('click', cancelImport);
+
+    const bulkMissionaryTextArea = document.getElementById('bulkMissionaryTextArea');
+    if(bulkMissionaryTextArea) bulkMissionaryTextArea.addEventListener('input', e=>{ state.bulkMissionaryText = e.target.value; });
+    const previewMissionaryImportBtn = document.getElementById('previewMissionaryImportBtn');
+    if(previewMissionaryImportBtn) previewMissionaryImportBtn.addEventListener('click', previewImportMissionaries);
+    const confirmMissionaryImportBtn = document.getElementById('confirmMissionaryImportBtn');
+    if(confirmMissionaryImportBtn) confirmMissionaryImportBtn.addEventListener('click', confirmImportMissionaries);
+    const cancelMissionaryImportBtn = document.getElementById('cancelMissionaryImportBtn');
+    if(cancelMissionaryImportBtn) cancelMissionaryImportBtn.addEventListener('click', cancelImportMissionaries);
+
+    const filterUnassigned = document.getElementById('filterUnassigned');
+    if(filterUnassigned) filterUnassigned.addEventListener('change', e=>{ state.daeenFilterUnassigned = e.target.checked; render(); });
+    const adminDaeenSearch = document.getElementById('adminDaeenSearch');
+    if(adminDaeenSearch) adminDaeenSearch.addEventListener('input', e=>{ state.searchText = e.target.value; render(); });
+    root.querySelectorAll('[data-action="reassign"]').forEach(sel=> sel.addEventListener('change', e=>{ reassignDaeen(sel.getAttribute('data-id'), e.target.value); }));
+    root.querySelectorAll('[data-action="removeDaeen"]').forEach(b=> b.addEventListener('click', ()=> removeDaeenAdmin(b.getAttribute('data-id'))));
+
+    const exportBackupBtn = document.getElementById('exportBackupBtn');
+    if(exportBackupBtn) exportBackupBtn.addEventListener('click', exportBackup);
+    const importFileInput = document.getElementById('importFileInput');
+    if(importFileInput){
+      importFileInput.addEventListener('change', e=>{
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = ev=>{
+          let data;
+          try{ data = JSON.parse(ev.target.result); }
+          catch(err){ state.error = 'That file is not valid JSON.'; render(); return; }
+          if(!confirm('This will REPLACE all current data with this backup (from ' + (data.exportedAt||'an unknown date') + '). Continue?')) { e.target.value=''; return; }
+          importBackup(data);
+        };
+        reader.readAsText(file);
+      });
+    }
+  }
+
+  loadAll();
+})();
+</script>
+</body>
+</html>

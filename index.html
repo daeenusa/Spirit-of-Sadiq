@@ -260,13 +260,14 @@
       const now = new Date();
       return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
     }
-    // Reporting week runs Tuesday through the following Monday.
-    // (Day-level precision only — the app stores dates, not exact times, so
-    // this can't distinguish "Tuesday before 5pm" from "Tuesday after 5pm".)
+    // Reporting week runs Wednesday through the following Tuesday — this way,
+    // when the Tuesday meeting happens, "this week" is the full week that just
+    // finished (including that Tuesday), not a brand-new empty one.
+    // (Day-level precision only — the app stores dates, not exact times.)
     const now = new Date();
-    const day = now.getDay(); // 0=Sun..6=Sat, Tuesday=2
-    const daysSinceTuesday = (day - 2 + 7) % 7;
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysSinceTuesday);
+    const day = now.getDay(); // 0=Sun..6=Sat, Wednesday=3
+    const daysSinceWednesday = (day - 3 + 7) % 7;
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysSinceWednesday);
     return start.toISOString().slice(0,10);
   }
   function inCurrentMonth(dateStr){
@@ -1397,7 +1398,7 @@
     const activeDaeenCount = state.daeenRoster.filter(d=>isDaeenActive(d.id)).length;
 
     let html = '<div class="card"><h2>This week vs. year to date</h2>';
-    html += '<div class="muted" style="margin-bottom:10px;">Reporting week: ' + weekStart + ' through ' + weekEndDate.toISOString().slice(0,10) + ' (resets Tuesdays)</div>';
+    html += '<div class="muted" style="margin-bottom:10px;">Reporting week: ' + weekStart + ' through ' + weekEndDate.toISOString().slice(0,10) + ' (resets Wednesdays)</div>';
     html += '<div class="metric-grid">';
     html += metricTile(reportedThisWeekCount + '/' + state.missionaries.length, 'Missionaries reported this week');
     html += metricTile(baiatsThisWeek + ' / ' + baiatsYearToDate, "Bai'ats this week / year to date");
@@ -1465,17 +1466,51 @@
   }
 
   function weeklySummaryText(){
-    let lines = ['SPIRIT OF SADIQ — TUESDAY REPORT', new Date().toDateString(), ''];
-    for(const m of state.missionaries){
-      const metrics = computeMetrics(m.id);
-      lines.push(m.name + ':');
-      lines.push('  Daeen reached out to: ' + metrics.daeenReachedOut + ' of ' + metrics.daeenTotal);
-      lines.push('  Personal contacts: ' + metrics.personalContactsTotal);
-      lines.push("  Bai'ats this month: " + metrics.baiats);
-      lines.push('  Contacts reached by Daeen: ' + metrics.tablighReachedOut + ' of ' + metrics.tablighTotal);
-      lines.push('  Active this week: ' + (hasReportedThisWeek(m.id) ? 'yes' : 'NO ACTIVITY'));
-      lines.push('');
+    const weekStart = periodStartISO('week');
+    let lines = ['SPIRIT OF SADIQ — WEEKLY REPORT', new Date().toDateString(), ''];
+
+    function teamStats(team){
+      let allContacts = [];
+      let daeenIds = [];
+      team.forEach(m=>{
+        allContacts = allContacts.concat(state.contactsM[m.id]||[]);
+        const myDaeen = state.daeenRoster.filter(d=>d.missionaryId===m.id);
+        daeenIds = daeenIds.concat(myDaeen.map(d=>d.id));
+        myDaeen.forEach(d=> allContacts = allContacts.concat(state.contactsD[d.id]||[]));
+      });
+      const baiatsThisWeek = allContacts.filter(c=>c.stage===3 && c.baiatDate && c.baiatDate>=weekStart).length;
+      const activeContacts = allContacts.filter(isContactActive).length;
+      const activeDaeen = daeenIds.filter(id=>isDaeenActive(id)).length;
+      return {baiatsThisWeek, activeContacts, totalContacts: allContacts.length, activeDaeen, totalDaeen: daeenIds.length};
     }
+
+    const national = teamStats(state.missionaries);
+    lines.push('NATIONAL OVERVIEW:');
+    lines.push("  Bai'ats this week: " + national.baiatsThisWeek);
+    lines.push('  Active contacts: ' + national.activeContacts + '/' + national.totalContacts);
+    lines.push('  Active Daeen: ' + national.activeDaeen + '/' + national.totalDaeen);
+    lines.push('');
+
+    const reported = state.missionaries.filter(m=>hasReportedThisWeek(m.id));
+    const notReported = state.missionaries.filter(m=>!hasReportedThisWeek(m.id));
+    lines.push('REPORTED (' + reported.length + '):');
+    lines.push(reported.length ? reported.map(m=>m.name).join(', ') : 'None');
+    lines.push('');
+    lines.push('DID NOT REPORT (' + notReported.length + '):');
+    lines.push(notReported.length ? notReported.map(m=>m.name).join(', ') : 'None');
+    lines.push('');
+
+    const leaders = state.missionaries.filter(m=>m.isRegionalLeader);
+    leaders.forEach(rl=>{
+      const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id);
+      const s = teamStats(team);
+      lines.push((rl.regionLabel||'Unnamed region').toUpperCase() + ':');
+      lines.push("  Bai'ats this week: " + s.baiatsThisWeek);
+      lines.push('  Active contacts: ' + s.activeContacts + '/' + s.totalContacts);
+      lines.push('  Active Daeen: ' + s.activeDaeen + '/' + s.totalDaeen);
+      lines.push('');
+    });
+
     return lines.join('\n');
   }
 

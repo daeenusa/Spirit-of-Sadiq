@@ -1485,31 +1485,24 @@
     }
 
     const national = teamStats(state.missionaries);
-    lines.push('NATIONAL OVERVIEW:');
-    lines.push("  Bai'ats this week: " + national.baiatsThisWeek);
-    lines.push('  Active contacts: ' + national.activeContacts + '/' + national.totalContacts);
-    lines.push('  Active Daeen: ' + national.activeDaeen + '/' + national.totalDaeen);
+    lines.push('NATIONAL OVERVIEW — Bai\u2019ats: ' + national.baiatsThisWeek + ' | Contacts: ' + national.activeContacts + '/' + national.totalContacts + ' | Daeen: ' + national.activeDaeen + '/' + national.totalDaeen);
     lines.push('');
 
     const reported = state.missionaries.filter(m=>hasReportedThisWeek(m.id));
     const notReported = state.missionaries.filter(m=>!hasReportedThisWeek(m.id));
-    lines.push('REPORTED (' + reported.length + '):');
-    lines.push(reported.length ? reported.map(m=>m.name).join(', ') : 'None');
-    lines.push('');
-    lines.push('DID NOT REPORT (' + notReported.length + '):');
-    lines.push(notReported.length ? notReported.map(m=>m.name).join(', ') : 'None');
+    lines.push('REPORTED (' + reported.length + '): ' + (reported.length ? reported.map(m=>m.name).join(', ') : 'None'));
+    lines.push('DID NOT REPORT (' + notReported.length + '): ' + (notReported.length ? notReported.map(m=>m.name).join(', ') : 'None'));
     lines.push('');
 
     const leaders = state.missionaries.filter(m=>m.isRegionalLeader);
-    leaders.forEach(rl=>{
-      const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id);
-      const s = teamStats(team);
-      lines.push((rl.regionLabel||'Unnamed region').toUpperCase() + ':');
-      lines.push("  Bai'ats this week: " + s.baiatsThisWeek);
-      lines.push('  Active contacts: ' + s.activeContacts + '/' + s.totalContacts);
-      lines.push('  Active Daeen: ' + s.activeDaeen + '/' + s.totalDaeen);
-      lines.push('');
-    });
+    if(leaders.length){
+      lines.push('BY REGION:');
+      leaders.forEach(rl=>{
+        const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id);
+        const s = teamStats(team);
+        lines.push((rl.regionLabel||'Unnamed region') + ' — Bai\u2019ats: ' + s.baiatsThisWeek + ' | Contacts: ' + s.activeContacts + '/' + s.totalContacts + ' | Daeen: ' + s.activeDaeen + '/' + s.totalDaeen);
+      });
+    }
 
     return lines.join('\n');
   }

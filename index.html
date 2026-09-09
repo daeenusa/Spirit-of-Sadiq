@@ -17,6 +17,7 @@
     --accent-soft:#E6F5F3;
     --warn:#DC2626;
     --warn-soft:#FDECEC;
+    --caution:#B45309;
     --good:#16A34A;
     --good-soft:#E8F8ED;
     --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -212,6 +213,9 @@
     passwordInput: '',
     searchText: '',
     daeenFilterUnassigned: false,
+    daeenFilterNotContacted: false,
+    contactsFilterNotEngaged: false,
+    contactsFilterStage: '',
     newName: '',
     newRegion: '',
     newGroups: [],
@@ -230,6 +234,11 @@
     bulkImportPreview: null,
     bulkMissionaryText: '',
     bulkMissionaryPreview: null,
+    newPasswordInput: '',
+    newPasswordConfirm: '',
+    selectedAdminId: '',
+    selectedMissionaryId: '',
+    addingAdminMember: false,
     error: ''
   };
 
@@ -280,7 +289,7 @@
 
   // ---------- storage adapter: Google Apps Script (shared) + localStorage (personal "who am I") ----------
 
-  const API_URL = 'https://script.google.com/macros/s/AKfycbyUS7Q5K4qTJu0Q82rM9gXw9DzGfqbOSWVAPbrZODFjjEu9OzE7a-ZSyKYoiP0Itc4m/exec';
+  const API_URL = 'https://script.google.com/macros/s/AKfycby.../exec';
 
   async function gsGetAll(){
     try{
@@ -310,6 +319,45 @@
       return false;
     }
   }
+  async function gsGetFresh(key){
+    try{
+      const res = await fetch(API_URL + '?action=getKey&key=' + encodeURIComponent(key));
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      return data.value;
+    }catch(err){
+      console.error(err);
+      return null;
+    }
+  }
+
+  // Missionaries and the Daeen roster are SHARED lists many people can edit
+  // at once. If two people have the app open, each holds a snapshot from
+  // whenever they loaded the page. Saving that snapshot directly would
+  // silently erase anything anyone else changed in the meantime — which is
+  // exactly what caused missionaries and assignments to vanish before.
+  // These two functions always re-fetch the LATEST version from the server
+  // first, apply the change to that, and only then save — so nobody's
+  // change ever gets clobbered by someone else's stale local copy.
+  async function mutateSharedMissionaries(mutatorFn){
+    const raw = await gsGetFresh('missionaries');
+    let fresh = state.missionaries;
+    if(raw){ try{ fresh = JSON.parse(raw); }catch(e){} }
+    mutatorFn(fresh);
+    state.missionaries = fresh;
+    await gsSet('missionaries', JSON.stringify(fresh));
+    render();
+  }
+  async function mutateSharedDaeenRoster(mutatorFn){
+    const raw = await gsGetFresh('daeen-roster');
+    let fresh = state.daeenRoster;
+    if(raw){ try{ fresh = JSON.parse(raw); }catch(e){} }
+    mutatorFn(fresh);
+    state.daeenRoster = fresh;
+    await gsSet('daeen-roster', JSON.stringify(fresh));
+    render();
+  }
+
   function localGetMe(){
     try{ const raw = localStorage.getItem('sos-me'); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
   }
@@ -403,6 +451,28 @@
     for(let i=buckets.length-1;i>=0;i--){ if(buckets[i]>0) streak++; else break; }
     return streak;
   }
+  function previousWeekRangeISO(){
+    const thisStart = periodStartISO('week');
+    const start = new Date(thisStart + 'T00:00:00');
+    start.setDate(start.getDate()-7);
+    return {start: start.toISOString().slice(0,10), end: thisStart};
+  }
+  // A compact "is this better or worse than last week" indicator — an arrow,
+  // a color, and the plain numbers. Deliberately not a chart: the point is
+  // a one-glance read, not a data dive.
+  function weekTrendRow(label, thisWeekVal, lastWeekVal){
+    const diff = thisWeekVal - lastWeekVal;
+    let arrow, color, text;
+    if(diff > 0){ arrow = '\u2191'; color = 'var(--good)'; text = 'up ' + diff + ' from last week'; }
+    else if(diff < 0){ arrow = '\u2193'; color = 'var(--warn)'; text = 'down ' + Math.abs(diff) + ' from last week'; }
+    else { arrow = '\u2192'; color = 'var(--text-muted)'; text = 'same as last week'; }
+    return '<div class="row-between" style="padding:9px 0; border-bottom:1px solid var(--border);">'
+      + '<div>' + escapeHtml(label) + '</div>'
+      + '<div style="text-align:right;"><span style="font-family:var(--mono); font-weight:700;">' + thisWeekVal + '</span> '
+      + '<span style="color:' + color + '; font-weight:700;">' + arrow + '</span> '
+      + '<span class="muted" style="font-size:11px;">' + text + ' (was ' + lastWeekVal + ')</span></div>'
+      + '</div>';
+  }
   function svgBarChart(buckets, color){
     const w = 100, h = 60, gap = 1.2;
     const barW = (w/buckets.length) - gap;
@@ -437,6 +507,17 @@
     return (contactsArray||[]).filter(c=>c.stage===3 && c.baiatDate).map(c=>c.baiatDate);
   }
 
+  function ratioColor(num, total){
+    if(total<=0) return 'var(--text)';
+    const pct = num/total;
+    if(pct >= 0.75) return 'var(--good)';
+    if(pct >= 0.4) return 'var(--caution)';
+    return 'var(--warn)';
+  }
+  function metricTileColored(num, total, label){
+    const color = ratioColor(num, total);
+    return '<div class="metric-tile"><div class="metric-value" style="color:' + color + ';">' + num + '<span class="muted" style="font-size:15px; font-weight:600;">/' + total + '</span></div><div class="metric-label">' + escapeHtml(label) + '</div></div>';
+  }
   function metricTile(value, label){
     return '<div class="metric-tile"><div class="metric-value">' + value + '</div><div class="metric-label">' + escapeHtml(label) + '</div></div>';
   }
@@ -666,8 +747,16 @@
 
   function chooseRole(role){
     state.pendingRole = role;
-    state.setupStage = (role === 'admin') ? 'password' : 'pick';
+    if(role === 'admin'){
+      state.setupStage = state.admins.length ? 'pick' : 'password';
+    } else {
+      state.setupStage = 'pick';
+    }
     state.passwordInput = '';
+    state.newPasswordInput = '';
+    state.newPasswordConfirm = '';
+    state.selectedAdminId = '';
+    state.selectedMissionaryId = '';
     state.searchText = '';
     state.newName = '';
     state.newRegion = '';
@@ -676,9 +765,88 @@
     render();
   }
   function checkAdminPassword(){
-    if(state.passwordInput === '1889'){ state.setupStage = 'pick'; state.error = ''; }
+    if(state.passwordInput === '1889'){ state.setupStage = 'adminCreate'; state.error = ''; }
     else{ state.error = 'Incorrect password.'; }
     render();
+  }
+  function selectAdminForLogin(a){
+    state.selectedAdminId = a.id;
+    state.setupStage = 'adminPassword';
+    state.passwordInput = '';
+    state.error = '';
+    render();
+  }
+  async function submitAdminPasswordLogin(){
+    const a = state.admins.find(x=>x.id===state.selectedAdminId);
+    if(!a){ state.error = 'Something went wrong — go back and try again.'; render(); return; }
+    if(!a.password){
+      // First login for an account created before passwords existed — set one now.
+      if(!state.passwordInput || state.passwordInput.length < 4){ state.error = 'Choose a password at least 4 characters long.'; render(); return; }
+      if(state.passwordInput !== state.newPasswordConfirm){ state.error = 'Passwords don\u2019t match.'; render(); return; }
+      a.password = state.passwordInput;
+      await saveAdmins();
+      await chooseExistingAdmin(a);
+      return;
+    }
+    if(state.passwordInput === a.password){
+      await chooseExistingAdmin(a);
+    } else {
+      state.error = 'Incorrect password.';
+      render();
+    }
+  }
+  async function submitAdminCreate(){
+    const name = state.newName.trim();
+    if(!name){ state.error = 'Enter a name.'; render(); return; }
+    if(!state.newPasswordInput || state.newPasswordInput.length < 4){ state.error = 'Choose a password at least 4 characters long.'; render(); return; }
+    if(state.newPasswordInput !== state.newPasswordConfirm){ state.error = 'Passwords don\u2019t match.'; render(); return; }
+    if(state.admins.find(a=>a.name.toLowerCase()===name.toLowerCase())){ state.error = 'That name is already taken.'; render(); return; }
+    const a = {id: uid(), name, password: state.newPasswordInput};
+    state.admins.push(a);
+    await saveAdmins();
+    await saveMe({role:'admin', id:a.id, name:a.name});
+    render();
+  }
+  async function confirmAddAdmin(){
+    const name = state.newName.trim();
+    if(!name){ state.error = 'Enter a name.'; render(); return; }
+    if(!state.newPasswordInput || state.newPasswordInput.length < 4){ state.error = 'Choose a password at least 4 characters long.'; render(); return; }
+    if(state.admins.find(a=>a.name.toLowerCase()===name.toLowerCase())){ state.error = 'That name is already taken.'; render(); return; }
+    state.admins.push({id: uid(), name, password: state.newPasswordInput});
+    await saveAdmins();
+    state.addingAdminMember = false;
+    state.newName = ''; state.newPasswordInput = ''; state.error = '';
+    render();
+  }
+
+  function selectMissionaryForLogin(m){
+    state.selectedMissionaryId = m.id;
+    state.setupStage = 'missionaryPassword';
+    state.passwordInput = '';
+    state.newPasswordConfirm = '';
+    state.error = '';
+    render();
+  }
+  async function submitMissionaryPasswordLogin(){
+    const m = state.missionaries.find(x=>x.id===state.selectedMissionaryId);
+    if(!m){ state.error = 'Something went wrong — go back and try again.'; render(); return; }
+    if(!m.password){
+      if(!state.passwordInput || state.passwordInput.length < 4){ state.error = 'Choose a password at least 4 characters long.'; render(); return; }
+      if(state.passwordInput !== state.newPasswordConfirm){ state.error = 'Passwords don\u2019t match.'; render(); return; }
+      const chosenPassword = state.passwordInput;
+      await mutateSharedMissionaries(fresh=>{
+        const fm = fresh.find(x=>x.id===m.id);
+        if(fm) fm.password = chosenPassword;
+      });
+      await chooseExistingMissionary(m);
+      return;
+    }
+    if(state.passwordInput === m.password){
+      await chooseExistingMissionary(m);
+    } else {
+      state.error = 'Incorrect password.';
+      render();
+    }
   }
 
   async function chooseExistingMissionary(m){
@@ -689,29 +857,6 @@
   }
   async function chooseExistingAdmin(a){ await saveMe({role:'admin', id:a.id, name:a.name}); render(); }
 
-  async function createNewMissionary(){
-    const name = state.newName.trim();
-    if(!name){ state.error = 'Enter a name first.'; render(); return; }
-    const existing = state.missionaries.find(m=>m.name.toLowerCase()===name.toLowerCase());
-    if(existing){ await chooseExistingMissionary(existing); return; }
-    const m = {id: uid(), name, target: 10, groups: state.newGroups.slice(), isRegionalLeader:false, regionalLeaderId:''};
-    state.missionaries.push(m);
-    state.contactsM[m.id] = [];
-    await saveMissionaries();
-    await saveMe({role:'missionary', id:m.id, name:m.name});
-    render();
-  }
-  async function createNewAdmin(){
-    const name = state.newName.trim();
-    if(!name){ state.error = 'Enter a name first.'; render(); return; }
-    const existing = state.admins.find(a=>a.name.toLowerCase()===name.toLowerCase());
-    if(existing){ await chooseExistingAdmin(existing); return; }
-    const a = {id: uid(), name};
-    state.admins.push(a);
-    await saveAdmins();
-    await saveMe({role:'admin', id:a.id, name:a.name});
-    render();
-  }
   function switchIdentity(){ state.me = null; state.setupStage = 'role'; render(); }
 
   function renderSetup(){
@@ -728,21 +873,69 @@
     html += '<div class="setup-card">';
 
     if(state.setupStage === 'password'){
-      html += '<div class="field"><label>National access password</label><input id="passwordInput" type="password" placeholder="Enter password" value="' + escapeHtml(state.passwordInput) + '"></div>';
+      html += '<div class="muted" style="margin-bottom:10px;">No National Access members exist yet. Enter the one-time setup passphrase to create the first one.</div>';
+      html += '<div class="field"><label>Setup passphrase</label><input id="passwordInput" type="password" placeholder="Enter passphrase" value="' + escapeHtml(state.passwordInput) + '"></div>';
       html += '<button class="primary" id="submitPasswordBtn">Continue</button>';
       if(state.error) html += '<div class="error-text">' + escapeHtml(state.error) + '</div>';
       html += '</div></div>';
       return html;
     }
 
-    if(state.pendingRole === 'missionary'){
-      if(state.missionaries.length){
-        html += '<div class="muted" style="margin-bottom:8px;">Tap your name</div><div class="existing-list">';
-        for(const m of state.missionaries) html += '<button data-id="' + m.id + '" data-kind="m">' + escapeHtml(m.name) + '</button>';
-        html += '</div><div class="divider-or">or</div>';
+    if(state.setupStage === 'adminCreate'){
+      html += '<div class="muted" style="margin-bottom:10px;">Create the first National Access account. Choose your own password — you\'ll use it to log in from now on.</div>';
+      html += '<div class="field"><label>Your name</label><input id="newNameInput" type="text" placeholder="Your name" value="' + escapeHtml(state.newName) + '"></div>';
+      html += '<div class="field"><label>Choose a password</label><input id="newPasswordInput" type="password" value="' + escapeHtml(state.newPasswordInput) + '"></div>';
+      html += '<div class="field"><label>Confirm password</label><input id="newPasswordConfirm" type="password" value="' + escapeHtml(state.newPasswordConfirm) + '"></div>';
+      html += '<button class="primary" id="submitAdminCreateBtn">Create account</button>';
+      if(state.error) html += '<div class="error-text">' + escapeHtml(state.error) + '</div>';
+      html += '</div></div>';
+      return html;
+    }
+
+    if(state.setupStage === 'adminPassword'){
+      const a = state.admins.find(x=>x.id===state.selectedAdminId);
+      if(a && !a.password){
+        html += '<div class="muted" style="margin-bottom:10px;">This is <b>' + escapeHtml(a.name) + '</b>\u2019s first login since passwords were added. Set one now.</div>';
+        html += '<div class="field"><label>Choose a password</label><input id="passwordInput" type="password" value="' + escapeHtml(state.passwordInput) + '"></div>';
+        html += '<div class="field"><label>Confirm password</label><input id="newPasswordConfirm" type="password" value="' + escapeHtml(state.newPasswordConfirm) + '"></div>';
+        html += '<button class="primary" id="submitAdminPasswordBtn">Set password &amp; log in</button>';
+      } else {
+        html += '<div class="muted" style="margin-bottom:10px;">Enter the password for <b>' + escapeHtml(a?a.name:'') + '</b>.</div>';
+        html += '<div class="field"><label>Password</label><input id="passwordInput" type="password" placeholder="Enter password" value="' + escapeHtml(state.passwordInput) + '"></div>';
+        html += '<button class="primary" id="submitAdminPasswordBtn">Log in</button>';
       }
-      html += '<div class="field"><label>New missionary</label><input id="newNameInput" type="text" placeholder="Your name" value="' + escapeHtml(state.newName) + '"></div>';
-      html += '<button class="primary" id="createBtn">Join as missionary</button>';
+      if(state.error) html += '<div class="error-text">' + escapeHtml(state.error) + '</div>';
+      html += '</div></div>';
+      return html;
+    }
+
+    if(state.setupStage === 'missionaryPassword'){
+      const m = state.missionaries.find(x=>x.id===state.selectedMissionaryId);
+      if(m && !m.password){
+        html += '<div class="muted" style="margin-bottom:10px;">This is <b>' + escapeHtml(m.name) + '</b>\u2019s first login since passwords were added. Set one now — you\u2019ll use it every time from here on.</div>';
+        html += '<div class="field"><label>Choose a password</label><input id="passwordInput" type="password" value="' + escapeHtml(state.passwordInput) + '"></div>';
+        html += '<div class="field"><label>Confirm password</label><input id="newPasswordConfirm" type="password" value="' + escapeHtml(state.newPasswordConfirm) + '"></div>';
+        html += '<button class="primary" id="submitMissionaryPasswordBtn">Set password &amp; log in</button>';
+      } else {
+        html += '<div class="muted" style="margin-bottom:10px;">Enter the password for <b>' + escapeHtml(m?m.name:'') + '</b>.</div>';
+        html += '<div class="field"><label>Password</label><input id="passwordInput" type="password" placeholder="Enter password" value="' + escapeHtml(state.passwordInput) + '"></div>';
+        html += '<button class="primary" id="submitMissionaryPasswordBtn">Log in</button>';
+      }
+      if(state.error) html += '<div class="error-text">' + escapeHtml(state.error) + '</div>';
+      html += '</div></div>';
+      return html;
+    }
+
+    if(state.pendingRole === 'missionary'){
+      html += '<div class="search-box"><input id="missionarySearchInput" type="text" placeholder="Search your name…" value="' + escapeHtml(state.searchText) + '"></div>';
+      const filtered = state.searchText ? state.missionaries.filter(m=>m.name.toLowerCase().includes(state.searchText.toLowerCase())) : state.missionaries;
+      if(filtered.length){
+        html += '<div class="existing-list">';
+        for(const m of filtered) html += '<button data-id="' + m.id + '" data-kind="m">' + escapeHtml(m.name) + '</button>';
+        html += '</div>';
+      } else {
+        html += '<div class="muted">No match. Don\u2019t see your name at all? Ask National Access to add you.</div>';
+      }
     } else if(state.pendingRole === 'groupleader'){
       const leaders = state.missionaries.filter(m=>m.isRegionalLeader);
       if(leaders.length){
@@ -756,11 +949,12 @@
     } else {
       if(state.admins.length){
         html += '<div class="muted" style="margin-bottom:8px;">Tap your name</div><div class="existing-list">';
-        for(const a of state.admins) html += '<button data-id="' + a.id + '" data-kind="a">' + escapeHtml(a.name) + '</button>';
-        html += '</div><div class="divider-or">or</div>';
+        for(const a of state.admins) html += '<button data-id="' + a.id + '" data-kind="a2">' + escapeHtml(a.name) + '</button>';
+        html += '</div>';
+      } else {
+        html += '<div class="muted">No National Access members yet.</div>';
       }
-      html += '<div class="field"><label>New national access member</label><input id="newNameInput" type="text" placeholder="Your name" value="' + escapeHtml(state.newName) + '"></div>';
-      html += '<button class="primary" id="createBtn">Join national access</button>';
+      html += '<div class="muted" style="margin-top:12px;">New National Access members can only be added by someone already logged in — see the Backup tab once you\'re in.</div>';
     }
     if(state.error) html += '<div class="error-text">' + escapeHtml(state.error) + '</div>';
     html += '</div></div>';
@@ -781,27 +975,35 @@
       btn.addEventListener('click', ()=>{
         const kind = btn.getAttribute('data-kind');
         const id = btn.getAttribute('data-id');
-        if(kind==='m'){ const m = state.missionaries.find(x=>x.id===id); if(m) chooseExistingMissionary(m); }
-        else{ const a = state.admins.find(x=>x.id===id); if(a) chooseExistingAdmin(a); }
+        if(kind==='m'){ const m = state.missionaries.find(x=>x.id===id); if(m) selectMissionaryForLogin(m); }
+        else if(kind==='a2'){ const a = state.admins.find(x=>x.id===id); if(a) selectAdminForLogin(a); }
       });
     });
-    const nameInput = document.getElementById('newNameInput');
-    if(nameInput){
-      nameInput.addEventListener('input', e=>{ state.newName = e.target.value; });
-      nameInput.addEventListener('keydown', e=>{ if(e.key==='Enter') createBtnAction(); });
-    }
+    const missionarySearchInput = document.getElementById('missionarySearchInput');
+    if(missionarySearchInput) missionarySearchInput.addEventListener('input', e=>{ state.searchText = e.target.value; render(); });
     const passwordInput = document.getElementById('passwordInput');
     if(passwordInput){
       passwordInput.addEventListener('input', e=>{ state.passwordInput = e.target.value; });
-      passwordInput.addEventListener('keydown', e=>{ if(e.key==='Enter') checkAdminPassword(); });
+      passwordInput.addEventListener('keydown', e=>{
+        if(e.key==='Enter'){
+          if(state.setupStage==='adminPassword') submitAdminPasswordLogin();
+          else if(state.setupStage==='missionaryPassword') submitMissionaryPasswordLogin();
+          else checkAdminPassword();
+        }
+      });
     }
+    const newPasswordInput = document.getElementById('newPasswordInput');
+    if(newPasswordInput) newPasswordInput.addEventListener('input', e=>{ state.newPasswordInput = e.target.value; });
+    const newPasswordConfirm = document.getElementById('newPasswordConfirm');
+    if(newPasswordConfirm) newPasswordConfirm.addEventListener('input', e=>{ state.newPasswordConfirm = e.target.value; });
     const submitPasswordBtn = document.getElementById('submitPasswordBtn');
     if(submitPasswordBtn) submitPasswordBtn.addEventListener('click', checkAdminPassword);
-    const createBtn = document.getElementById('createBtn');
-    if(createBtn) createBtn.addEventListener('click', createBtnAction);
-    function createBtnAction(){
-      if(state.pendingRole==='missionary') createNewMissionary(); else createNewAdmin();
-    }
+    const submitAdminCreateBtn = document.getElementById('submitAdminCreateBtn');
+    if(submitAdminCreateBtn) submitAdminCreateBtn.addEventListener('click', submitAdminCreate);
+    const submitAdminPasswordBtn = document.getElementById('submitAdminPasswordBtn');
+    if(submitAdminPasswordBtn) submitAdminPasswordBtn.addEventListener('click', submitAdminPasswordLogin);
+    const submitMissionaryPasswordBtn = document.getElementById('submitMissionaryPasswordBtn');
+    if(submitMissionaryPasswordBtn) submitMissionaryPasswordBtn.addEventListener('click', submitMissionaryPasswordLogin);
   }
 
   // ---------- shared contact rendering ----------
@@ -918,10 +1120,11 @@
     });
   }
   async function updateTarget(val){
-    const m = state.missionaries.find(r => r.id === state.me.id);
-    if(!m) return;
-    m.target = Math.max(0, parseInt(val)||0);
-    await saveMissionaries(); render();
+    const newTarget = Math.max(0, parseInt(val)||0);
+    await mutateSharedMissionaries(fresh=>{
+      const m = fresh.find(r => r.id === state.me.id);
+      if(m) m.target = newTarget;
+    });
   }
   function hasReportedThisWeek(missionaryId){
     const periodStart = periodStartISO('week');
@@ -1032,21 +1235,23 @@
     const name = state.newName.trim();
     if(!name){ state.error = 'Enter the Daeen\'s name.'; render(); return; }
     const d = {id: uid(), name, region: state.newRegion.trim(), missionaryId: state.me.id, notes:'', lastEngaged: null};
-    state.daeenRoster.push(d);
     state.contactsD[d.id] = [];
-    await saveRoster();
+    await mutateSharedDaeenRoster(fresh=>{ fresh.push(d); });
     state.addingDaeen = false; state.newName=''; state.newRegion=''; state.error='';
     render();
   }
   async function updateDaeenEntry(id, patch){
-    const d = state.daeenRoster.find(x=>x.id===id);
-    if(d) Object.assign(d, patch);
-    await saveRoster();
+    await mutateSharedDaeenRoster(fresh=>{
+      const d = fresh.find(x=>x.id===id);
+      if(d) Object.assign(d, patch);
+    });
     state.editingDaeenId = null; render();
   }
   async function deleteDaeenEntry(id){
-    state.daeenRoster = state.daeenRoster.filter(d=>d.id!==id);
-    await gsSet('daeen-roster', JSON.stringify(state.daeenRoster));
+    await mutateSharedDaeenRoster(fresh=>{
+      const idx = fresh.findIndex(d=>d.id===id);
+      if(idx>-1) fresh.splice(idx,1);
+    });
     render();
   }
   async function logDaeenEngagement(id, method){
@@ -1092,7 +1297,7 @@
 
     html += '<div class="card"><div class="row-between"><div class="eyebrow">Your Daeen</div>' + periodToggleHtml() + '</div>';
     html += '<div class="metric-grid">';
-    html += metricTile(metrics.daeenReachedOut + '/' + metrics.daeenTotal, 'Daeen reached out to');
+    html += metricTileColored(metrics.daeenReachedOut, metrics.daeenTotal, 'Daeen reached out to');
     html += metricTile(metrics.tablighReachedOut + '/' + metrics.tablighTotal, 'Contacts reached by your Daeen');
     html += '</div>';
     html += '<div class="muted" style="margin-top:12px;">' + overdueCount + ' Daeen overdue for a check-in</div>';
@@ -1125,7 +1330,8 @@
       html += '<button class="small-link" data-action="editdaeen" data-id="' + d.id + '">Edit</button>';
       html += '<button class="danger-link" data-action="deletedaeen" data-id="' + d.id + '">Remove</button>';
       html += '</div>';
-      html += '<div class="expand-toggle"><button class="small-link" data-action="toggleexpand" data-id="' + d.id + '">' + (expanded?'Hide':'View') + ' their contacts (' + contacts.length + ')</button></div>';
+      html += '<div class="muted" style="font-size:12px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">' + (contacts.length ? ('<b>Their contacts:</b> ' + contacts.map(c=>escapeHtml(c.name)).join(', ')) : 'No contacts logged for them yet') + '</div>';
+      html += '<div class="expand-toggle"><button class="small-link" data-action="toggleexpand" data-id="' + d.id + '">' + (expanded?'Hide':'Manage') + ' their contacts' + (contacts.length?(' (' + contacts.length + ')'):'') + '</button></div>';
 
       if(expanded){
         html += '<div class="nested-block">';
@@ -1199,18 +1405,21 @@
       const ranked = mine.team.map(m=>{
         const myDaeen = state.daeenRoster.filter(d=>d.missionaryId===m.id);
         const activeDaeen = myDaeen.filter(d=>isDaeenActive(d.id)).length;
+        const personalContacts = (state.contactsM[m.id]||[]).length;
+        let daeenContacts = 0;
+        myDaeen.forEach(d=> daeenContacts += (state.contactsD[d.id]||[]).length);
         return {
           m,
           baiats: baiatsYTDForMissionary(m.id),
           activeDaeen, daeenTotal: myDaeen.length,
-          contacts: allContactsUnderMissionary(m.id).length
+          personalContacts, daeenContacts
         };
-      }).sort((a,b)=> b.baiats - a.baiats || b.activeDaeen - a.activeDaeen || b.contacts - a.contacts || a.m.name.localeCompare(b.m.name));
+      }).sort((a,b)=> b.baiats - a.baiats || b.activeDaeen - a.activeDaeen || (b.personalContacts+b.daeenContacts) - (a.personalContacts+a.daeenContacts) || a.m.name.localeCompare(b.m.name));
       html += '<div class="card"><h2>' + escapeHtml(mine.rl.regionLabel||'Unnamed region') + '</h2>';
       html += '<div class="muted" style="margin-bottom:10px;">How your region\'s missionaries are doing this year.</div>';
       ranked.forEach((r,i)=>{
         const isMe = r.m.id===state.me.id;
-        html += '<div class="preview-row" style="' + (isMe?'font-weight:700;':'') + '">' + (i+1) + '. ' + escapeHtml(r.m.name) + (isMe?' (you)':'') + ' — ' + r.baiats + (r.baiats===1?' Bai\u2019at':' Bai\u2019ats') + ' <span class="muted">&middot; ' + r.activeDaeen + '/' + r.daeenTotal + ' active Daeen &middot; ' + r.contacts + ' contacts</span></div>';
+        html += '<div class="preview-row" style="' + (isMe?'font-weight:700;':'') + '">' + (i+1) + '. ' + escapeHtml(r.m.name) + (isMe?' (you)':'') + ' — ' + r.baiats + (r.baiats===1?' Bai\u2019at':' Bai\u2019ats') + ' <span class="muted">&middot; ' + r.activeDaeen + '/' + r.daeenTotal + ' active Daeen &middot; ' + r.personalContacts + ' personal contacts &middot; ' + r.daeenContacts + ' Daeen contacts</span></div>';
       });
       html += '</div>';
     } else {
@@ -1222,20 +1431,21 @@
       const regionRanked = leaders.map(rl=>{
         const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id);
         const baiats = team.reduce((s,m)=>s+baiatsYTDForMissionary(m.id),0);
-        let activeDaeen=0, daeenTotal=0, contacts=0;
+        let activeDaeen=0, daeenTotal=0, personalContacts=0, daeenContacts=0;
         team.forEach(m=>{
           const myDaeen = state.daeenRoster.filter(d=>d.missionaryId===m.id);
           activeDaeen += myDaeen.filter(d=>isDaeenActive(d.id)).length;
           daeenTotal += myDaeen.length;
-          contacts += allContactsUnderMissionary(m.id).length;
+          personalContacts += (state.contactsM[m.id]||[]).length;
+          myDaeen.forEach(d=> daeenContacts += (state.contactsD[d.id]||[]).length);
         });
-        return {rl, baiats, size: team.length, activeDaeen, daeenTotal, contacts};
-      }).sort((a,b)=> b.baiats - a.baiats || b.activeDaeen - a.activeDaeen || b.contacts - a.contacts || (a.rl.regionLabel||'').localeCompare(b.rl.regionLabel||''));
+        return {rl, baiats, size: team.length, activeDaeen, daeenTotal, personalContacts, daeenContacts};
+      }).sort((a,b)=> b.baiats - a.baiats || b.activeDaeen - a.activeDaeen || (b.personalContacts+b.daeenContacts) - (a.personalContacts+a.daeenContacts) || (a.rl.regionLabel||'').localeCompare(b.rl.regionLabel||''));
       html += '<div class="card"><h2>Regions</h2>';
       html += '<div class="muted" style="margin-bottom:10px;">Combined totals year to date, by region.</div>';
       regionRanked.forEach((r,i)=>{
         const isMine = mine && r.rl.id===mine.rl.id;
-        html += '<div class="preview-row" style="' + (isMine?'font-weight:700;':'') + '">' + (i+1) + '. ' + escapeHtml(r.rl.regionLabel||'Unnamed region') + (isMine?' (your region)':'') + ' <span class="muted">(' + r.size + ' missionaries)</span> — ' + r.baiats + (r.baiats===1?' Bai\u2019at':' Bai\u2019ats') + ' <span class="muted">&middot; ' + r.activeDaeen + '/' + r.daeenTotal + ' active Daeen &middot; ' + r.contacts + ' contacts</span></div>';
+        html += '<div class="preview-row" style="' + (isMine?'font-weight:700;':'') + '">' + (i+1) + '. ' + escapeHtml(r.rl.regionLabel||'Unnamed region') + (isMine?' (your region)':'') + ' <span class="muted">(' + r.size + ' missionaries)</span> — ' + r.baiats + (r.baiats===1?' Bai\u2019at':' Bai\u2019ats') + ' <span class="muted">&middot; ' + r.activeDaeen + '/' + r.daeenTotal + ' active Daeen &middot; ' + r.personalContacts + ' personal contacts &middot; ' + r.daeenContacts + ' Daeen contacts</span></div>';
       });
       html += '</div>';
     }
@@ -1306,8 +1516,8 @@
       html += '</div>';
       if(metrics.daeenTotal - metrics.daeenReachedOut > 0) html += '<div class="muted" style="margin-top:2px;">' + (metrics.daeenTotal - metrics.daeenReachedOut) + ' Daeen not reached</div>';
       html += '<div class="metric-grid" style="margin-top:8px;">';
-      html += metricTile(metrics.daeenReachedOut + '/' + metrics.daeenTotal, 'Daeen reached out to');
-      html += metricTile(metrics.personalReachedOut + '/' + metrics.personalContactsTotal, 'Personal contacts reached out to');
+      html += metricTileColored(metrics.daeenReachedOut, metrics.daeenTotal, 'Daeen reached out to');
+      html += metricTileColored(metrics.personalReachedOut, metrics.personalContactsTotal, 'Personal contacts reached out to');
       html += metricTile(metrics.baiats, "Bai'ats this month");
       html += '</div></div>';
     }
@@ -1400,11 +1610,25 @@
     let html = '<div class="card"><h2>This week vs. year to date</h2>';
     html += '<div class="muted" style="margin-bottom:10px;">Reporting week: ' + weekStart + ' through ' + weekEndDate.toISOString().slice(0,10) + ' (resets Wednesdays)</div>';
     html += '<div class="metric-grid">';
-    html += metricTile(reportedThisWeekCount + '/' + state.missionaries.length, 'Missionaries reported this week');
+    html += metricTileColored(reportedThisWeekCount, state.missionaries.length, 'Missionaries reported this week');
     html += metricTile(baiatsThisWeek + ' / ' + baiatsYearToDate, "Bai'ats this week / year to date");
-    html += metricTile(activeContactsCount + '/' + totalContacts, 'Contacts active');
-    html += metricTile(activeDaeenCount + '/' + state.daeenRoster.length, 'Daeen active');
+    html += metricTileColored(activeContactsCount, totalContacts, 'Contacts active');
+    html += metricTileColored(activeDaeenCount, state.daeenRoster.length, 'Daeen active');
     html += '</div></div>';
+
+    const lastWeek = previousWeekRangeISO();
+    const baiatsLastWeek = allContacts.filter(c=>c.stage===3 && c.baiatDate && c.baiatDate>=lastWeek.start && c.baiatDate<lastWeek.end).length;
+    const engagedThisWeekWow = allContacts.filter(c=> (c.lastContact && c.lastContact>=weekStart) || (c.history||[]).some(h=>h>=weekStart)).length;
+    const engagedLastWeekWow = allContacts.filter(c=> (c.history||[]).some(h=>h>=lastWeek.start && h<lastWeek.end) || (c.lastContact && c.lastContact>=lastWeek.start && c.lastContact<lastWeek.end)).length;
+    const daeenEngagedThisWeek = state.daeenRoster.filter(d=> (d.lastEngaged && d.lastEngaged>=weekStart) || (state.contactsD[d.id]||[]).some(c=>(c.history||[]).some(h=>h>=weekStart))).length;
+    const daeenEngagedLastWeek = state.daeenRoster.filter(d=> (d.lastEngaged && d.lastEngaged>=lastWeek.start && d.lastEngaged<lastWeek.end) || (state.contactsD[d.id]||[]).some(c=>(c.history||[]).some(h=>h>=lastWeek.start && h<lastWeek.end))).length;
+
+    html += '<div class="card"><h2>Week over week</h2>';
+    html += '<div class="muted" style="margin-bottom:6px;">Is the org trending up or down compared to last week?</div>';
+    html += weekTrendRow("Bai\u2019ats", baiatsThisWeek, baiatsLastWeek);
+    html += weekTrendRow('Contacts engaged', engagedThisWeekWow, engagedLastWeekWow);
+    html += weekTrendRow('Daeen engaged', daeenEngagedThisWeek, daeenEngagedLastWeek);
+    html += '</div>';
 
     html += '<div class="card"><div class="row-between"><h2>National funnel</h2>' + periodToggleHtml() + '</div>';
     html += '<div class="muted" style="margin:6px 0 12px;">' + state.missionaries.length + ' missionaries &middot; ' + state.daeenRoster.length + ' Daeen &middot; ' + totalContacts + ' total contacts &middot; ' + totalBaiats + " Bai'ats this month</div>";
@@ -1429,8 +1653,8 @@
         });
         html += '<div class="missionary-block"><div class="name">' + escapeHtml(rl.regionLabel||'Unnamed region') + '</div><div class="muted">' + team.length + ' missionaries</div>';
         html += '<div class="metric-grid" style="margin-top:8px;">';
-        html += metricTile(dR + '/' + dT, 'Daeen reached out to');
-        html += metricTile(cR + '/' + cT, 'Personal contacts reached out to');
+        html += metricTileColored(dR, dT, 'Daeen reached out to');
+        html += metricTileColored(cR, cT, 'Personal contacts reached out to');
         html += metricTile(bM, "Bai'ats this month");
         html += '</div></div>';
       });
@@ -1453,8 +1677,8 @@
       html += reportedThisWeek ? '<span class="ok-badge">Reported this week</span>' : '<span class="flag-badge">Needs this week\u2019s update</span>';
       html += '</div>';
       html += '<div class="metric-grid" style="margin-top:10px;">';
-      html += metricTile(metrics.daeenReachedOut + '/' + metrics.daeenTotal, 'Daeen reached out to');
-      html += metricTile(metrics.personalReachedOut + '/' + metrics.personalContactsTotal, 'Personal contacts reached out to');
+      html += metricTileColored(metrics.daeenReachedOut, metrics.daeenTotal, 'Daeen reached out to');
+      html += metricTileColored(metrics.personalReachedOut, metrics.personalContactsTotal, 'Personal contacts reached out to');
       html += metricTile(metrics.baiats, "Bai'ats this month");
       html += metricTile(metrics.tablighReachedOut + '/' + metrics.tablighTotal, 'Contacts reached by Daeen');
       html += '</div></div>';
@@ -1534,12 +1758,12 @@
   }
   async function confirmImport(){
     const rows = state.bulkImportPreview || [];
-    for(const row of rows){
+    const newDaeen = rows.map(row=>{
       const d = {id: uid(), name: row.name, region: row.region, missionaryId: row.missionaryId, notes:'', lastEngaged: null};
-      state.daeenRoster.push(d);
       state.contactsD[d.id] = [];
-    }
-    await saveRoster();
+      return d;
+    });
+    await mutateSharedDaeenRoster(fresh=>{ newDaeen.forEach(d=> fresh.push(d)); });
     state.bulkImportPreview = null;
     state.bulkImportText = '';
     render();
@@ -1567,29 +1791,30 @@
   function cancelImportMissionaries(){ state.bulkMissionaryPreview = null; render(); }
   async function confirmImportMissionaries(){
     const rows = state.bulkMissionaryPreview || [];
-    const byName = {};
-    state.missionaries.forEach(m=> byName[m.name.toLowerCase()] = m);
-    rows.forEach(row=>{
-      let m = byName[row.name.toLowerCase()];
-      if(!m){
-        m = {id: uid(), name: row.name, target: 10, groups: [], isRegionalLeader:false, regionalLeaderId:'', regionLabel:''};
-        state.missionaries.push(m);
-        state.contactsM[m.id] = [];
-        byName[row.name.toLowerCase()] = m;
-      }
+    await mutateSharedMissionaries(fresh=>{
+      const byName = {};
+      fresh.forEach(m=> byName[m.name.toLowerCase()] = m);
+      rows.forEach(row=>{
+        let m = byName[row.name.toLowerCase()];
+        if(!m){
+          m = {id: uid(), name: row.name, target: 10, groups: [], isRegionalLeader:false, regionalLeaderId:'', regionLabel:''};
+          fresh.push(m);
+          state.contactsM[m.id] = [];
+          byName[row.name.toLowerCase()] = m;
+        }
+      });
+      rows.forEach(row=>{
+        const m = byName[row.name.toLowerCase()];
+        if(!row.leaderName){
+          m.isRegionalLeader = true;
+          m.regionalLeaderId = '';
+          if(row.regionLabel) m.regionLabel = row.regionLabel;
+        } else {
+          const leader = byName[row.leaderName.toLowerCase()];
+          if(leader) m.regionalLeaderId = leader.id;
+        }
+      });
     });
-    rows.forEach(row=>{
-      const m = byName[row.name.toLowerCase()];
-      if(!row.leaderName){
-        m.isRegionalLeader = true;
-        m.regionalLeaderId = '';
-        if(row.regionLabel) m.regionLabel = row.regionLabel;
-      } else {
-        const leader = byName[row.leaderName.toLowerCase()];
-        if(leader) m.regionalLeaderId = leader.id;
-      }
-    });
-    await saveMissionaries();
     state.bulkMissionaryPreview = null;
     state.bulkMissionaryText = '';
     render();
@@ -1600,49 +1825,78 @@
     if(!name){ state.error='Enter a name.'; render(); return; }
     if(state.missionaries.find(m=>m.name.toLowerCase()===name.toLowerCase())){ state.error='That missionary already exists.'; render(); return; }
     const m = {id: uid(), name, target: 10, groups:[], isRegionalLeader:false, regionalLeaderId:''};
-    state.missionaries.push(m);
     state.contactsM[m.id] = [];
-    await saveMissionaries();
+    await mutateSharedMissionaries(fresh=>{
+      if(!fresh.find(x=>x.name.toLowerCase()===name.toLowerCase())) fresh.push(m);
+    });
     state.newName=''; state.error='';
     render();
   }
   async function removeMissionaryAdmin(id){
     if(!confirm('Remove this missionary? Their Daeen will need reassigning.')) return;
-    state.missionaries = state.missionaries.filter(m=>m.id!==id);
-    await saveMissionaries();
+    await mutateSharedMissionaries(fresh=>{
+      const idx = fresh.findIndex(m=>m.id===id);
+      if(idx>-1) fresh.splice(idx,1);
+    });
     render();
   }
-  async function reassignDaeen(daeenId, missionaryId){
-    const d = state.daeenRoster.find(x=>x.id===daeenId);
-    if(d){ d.missionaryId = missionaryId; await saveRoster(); render(); }
-  }
-  async function toggleRegionalLeader(id){
+  async function resetMissionaryPassword(id){
     const m = state.missionaries.find(x=>x.id===id);
     if(!m) return;
-    m.isRegionalLeader = !m.isRegionalLeader;
-    if(m.isRegionalLeader) m.regionalLeaderId = '';
-    await saveMissionaries(); render();
+    if(!confirm('Reset the password for ' + m.name + '? They\u2019ll be asked to set a new one next time they log in.')) return;
+    await mutateSharedMissionaries(fresh=>{
+      const fm = fresh.find(x=>x.id===id);
+      if(fm) delete fm.password;
+    });
+    showToast('Password reset for ' + m.name);
+  }
+  async function reassignDaeen(daeenId, missionaryId){
+    await mutateSharedDaeenRoster(fresh=>{
+      const d = fresh.find(x=>x.id===daeenId);
+      if(d) d.missionaryId = missionaryId;
+    });
+    render();
+  }
+  async function toggleRegionalLeader(id){
+    await mutateSharedMissionaries(fresh=>{
+      const m = fresh.find(x=>x.id===id);
+      if(!m) return;
+      m.isRegionalLeader = !m.isRegionalLeader;
+      if(m.isRegionalLeader) m.regionalLeaderId = '';
+    });
   }
   async function assignRegionalLeader(missionaryId, regionalLeaderId){
-    const m = state.missionaries.find(x=>x.id===missionaryId);
-    if(m){ m.regionalLeaderId = regionalLeaderId; await saveMissionaries(); render(); }
+    await mutateSharedMissionaries(fresh=>{
+      const m = fresh.find(x=>x.id===missionaryId);
+      if(m) m.regionalLeaderId = regionalLeaderId;
+    });
   }
   async function removeDaeenAdmin(id){
     if(!confirm('Remove this Daeen from the roster?')) return;
-    state.daeenRoster = state.daeenRoster.filter(d=>d.id!==id);
-    await gsSet('daeen-roster', JSON.stringify(state.daeenRoster));
+    await mutateSharedDaeenRoster(fresh=>{
+      const idx = fresh.findIndex(d=>d.id===id);
+      if(idx>-1) fresh.splice(idx,1);
+    });
     render();
   }
 
   function renderAdminMissionaries(){
     let html = '<div class="card"><h2>All missionaries</h2>';
-    html += '<div class="muted" style="margin-bottom:10px;">Mark the 6–7 who lead a region, then assign every other missionary to report to one of them.</div>';
+    html += '<div class="muted" style="margin-bottom:10px;">Mark the 6–7 who lead a region, then assign every other missionary to report to one of them. Sorted by region.</div>';
     if(!state.missionaries.length) html += '<div class="empty-state">None yet.</div>';
     const regionalLeaders = state.missionaries.filter(m=>m.isRegionalLeader);
-    html += '<table class="admin-table"><thead><tr><th>Name</th><th>Region</th><th>Regional?</th><th>Reports to</th><th>Daeen</th><th></th></tr></thead><tbody>';
-    for(const m of state.missionaries){
+    const sorted = state.missionaries.slice().sort((a,b)=>{
+      const ra = getMissionaryRegionLabel(a) || 'zzz', rb = getMissionaryRegionLabel(b) || 'zzz';
+      if(ra !== rb) return ra.localeCompare(rb);
+      if(a.isRegionalLeader !== b.isRegionalLeader) return a.isRegionalLeader ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    html += '<table class="admin-table"><thead><tr><th>Name</th><th>Region</th><th>Regional?</th><th>Reports to</th><th>Daeen</th><th>Bai\u2019ats YTD</th><th>Contacts this wk</th><th>Daeen contacts this wk</th><th></th></tr></thead><tbody>';
+    for(const m of sorted){
       const count = state.daeenRoster.filter(d=>d.missionaryId===m.id).length;
-      html += '<tr><td>' + escapeHtml(m.name) + '</td><td>' + escapeHtml(m.regionLabel||'—') + '</td>';
+      const metrics = computeMetrics(m.id);
+      const baiats = baiatsYTDForMissionary(m.id);
+      html += '<tr><td>' + escapeHtml(m.name) + '</td><td>' + escapeHtml(getMissionaryRegionLabel(m)||'—') + '</td>';
       html += '<td><input type="checkbox" data-action="toggleRL" data-id="' + m.id + '" ' + (m.isRegionalLeader?'checked':'') + '></td>';
       if(m.isRegionalLeader){ html += '<td>—</td>'; }
       else {
@@ -1650,7 +1904,11 @@
         for(const rl of regionalLeaders) html += '<option value="' + rl.id + '" ' + (m.regionalLeaderId===rl.id?'selected':'') + '>' + escapeHtml(rl.name) + '</option>';
         html += '</select></td>';
       }
-      html += '<td>' + count + '</td><td><button class="danger-link" data-action="removeMissionary" data-id="' + m.id + '">Remove</button></td></tr>';
+      html += '<td>' + count + '</td>';
+      html += '<td style="color:' + (baiats>0?'var(--good)':'var(--text-muted)') + '; font-weight:700;">' + baiats + '</td>';
+      html += '<td style="color:' + ratioColor(metrics.personalReachedOut, metrics.personalContactsTotal) + ';">' + metrics.personalReachedOut + '/' + metrics.personalContactsTotal + '</td>';
+      html += '<td style="color:' + ratioColor(metrics.tablighReachedOut, metrics.tablighTotal) + ';">' + metrics.tablighReachedOut + '/' + metrics.tablighTotal + '</td>';
+      html += '<td><button class="small-link" data-action="resetMissionaryPassword" data-id="' + m.id + '">Reset password</button> <button class="danger-link" data-action="removeMissionary" data-id="' + m.id + '">Remove</button></td></tr>';
     }
     html += '</tbody></table></div>';
 
@@ -1663,17 +1921,33 @@
   }
 
   function renderAdminDaeen(){
+    const weekStartD = periodStartISO('week');
+    function contactedThisWeek(d){
+      if(d.lastEngaged && d.lastEngaged >= weekStartD) return true;
+      return (state.contactsD[d.id]||[]).some(c=>(c.history||[]).some(h=>h>=weekStartD));
+    }
     const filtered = state.daeenRoster.filter(d=>{
       if(state.daeenFilterUnassigned && d.missionaryId) return false;
+      if(state.daeenFilterNotContacted && contactedThisWeek(d)) return false;
       return !state.searchText || d.name.toLowerCase().includes(state.searchText.toLowerCase());
-    }).slice().sort((a,b)=> (a.region||'').localeCompare(b.region||'') || a.name.localeCompare(b.name));
+    }).slice().sort((a,b)=>{
+      const ca = contactedThisWeek(a), cb = contactedThisWeek(b);
+      if(ca !== cb) return ca ? 1 : -1;
+      return (a.region||'').localeCompare(b.region||'') || a.name.localeCompare(b.name);
+    });
     let html = '<div class="card"><div class="row-between"><h2>All Daeen (' + state.daeenRoster.length + ')</h2>';
+    html += '<div class="row" style="gap:14px;">';
     html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="filterUnassigned" ' + (state.daeenFilterUnassigned?'checked':'') + '> unassigned only</label>';
-    html += '</div>';
+    html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="filterNotContacted" ' + (state.daeenFilterNotContacted?'checked':'') + '> not contacted this week only</label>';
+    html += '</div></div>';
+    html += '<div class="muted" style="margin-bottom:8px;">Sorted with anyone not yet contacted this week first.</div>';
     html += '<div class="search-box"><input type="text" id="adminDaeenSearch" placeholder="Search Daeen…" value="' + escapeHtml(state.searchText) + '"></div>';
-    html += '<table class="admin-table"><thead><tr><th>Name</th><th>Jamaat</th><th>Missionary</th><th></th></tr></thead><tbody>';
+    html += '<table class="admin-table"><thead><tr><th>Name</th><th>Jamaat</th><th>This week</th><th>Missionary</th><th></th></tr></thead><tbody>';
     for(const d of filtered){
-      html += '<tr><td>' + escapeHtml(d.name) + '</td><td>' + escapeHtml(d.region||'—') + '</td><td><select data-action="reassign" data-id="' + d.id + '"><option value="">unassigned</option>';
+      const contacted = contactedThisWeek(d);
+      html += '<tr><td>' + escapeHtml(d.name) + '</td><td>' + escapeHtml(d.region||'—') + '</td>';
+      html += '<td>' + (contacted?'<span class="ok-badge">contacted</span>':'<span class="flag-badge">not yet</span>') + '</td>';
+      html += '<td><select data-action="reassign" data-id="' + d.id + '"><option value="">unassigned</option>';
       for(const m of state.missionaries) html += '<option value="' + m.id + '" ' + (m.id===d.missionaryId?'selected':'') + '>' + escapeHtml(m.name) + '</option>';
       html += '</select></td><td><button class="danger-link" data-action="removeDaeen" data-id="' + d.id + '">Remove</button></td></tr>';
     }
@@ -1726,7 +2000,24 @@
     render();
   }
   function renderAdminBackup(){
-    let html = '<div class="card"><h2>Download a backup</h2>';
+    let html = '<div class="card"><h2>National Access members</h2>';
+    html += '<div class="muted" style="margin-bottom:10px;">New members can only be added here, by someone already logged in — there\'s no public self-signup anymore.</div>';
+    state.admins.forEach(a=>{
+      html += '<div class="preview-row">' + escapeHtml(a.name) + (a.id===state.me.id?' <span class="ok-badge">you</span>':'') + '</div>';
+    });
+    if(state.addingAdminMember){
+      html += '<div class="nested-block">';
+      html += '<div class="field"><label>Name</label><input type="text" id="newAdminName" value="' + escapeHtml(state.newName) + '"></div>';
+      html += '<div class="field"><label>Set their password</label><input type="password" id="newAdminPassword" value="' + escapeHtml(state.newPasswordInput) + '"></div>';
+      html += '<div class="form-actions"><button class="primary" id="confirmAddAdminBtn">Add member</button><button class="ghost" id="cancelAddAdminBtn">Cancel</button></div>';
+      if(state.error) html += '<div class="error-text">' + escapeHtml(state.error) + '</div>';
+      html += '</div>';
+    } else {
+      html += '<button class="ghost" id="addAdminMemberBtn" style="margin-top:10px;">+ Add National Access member</button>';
+    }
+    html += '</div>';
+
+    html += '<div class="card"><h2>Download a backup</h2>';
     html += '<div class="muted">Saves everything — missionaries, Daeen, contacts, group reports — into one file on your device.</div>';
     html += '<div style="margin-top:12px;"><button class="primary" id="exportBackupBtn">Download backup (.json)</button></div>';
     html += '</div>';
@@ -1744,6 +2035,10 @@
     } else {
       const rows = state.bulkMissionaryPreview;
       const leaders = rows.filter(r=>!r.leaderName).length;
+      const suspiciouslyHigh = rows.length>=3 && leaders/rows.length >= 0.5;
+      if(suspiciouslyHigh){
+        html += '<div class="error-text" style="background:var(--warn-soft); padding:12px 14px; border-radius:9px; margin-bottom:10px; font-weight:700;">\u26A0 ' + leaders + ' of ' + rows.length + ' rows have a blank Leader name, which marks them as NEW regional leaders. If you meant to paste <code>Name, Region, Leader</code> for regular missionaries, check your formatting before confirming — this can silently overwrite existing leader assignments for people who already exist under that name.</div>';
+      }
       html += '<div class="muted" style="margin-bottom:10px;">' + rows.length + ' rows parsed &middot; ' + leaders + ' regional leaders &middot; ' + (rows.length-leaders) + ' regular missionaries</div>';
       html += '<div style="max-height:240px; overflow-y:auto; margin-bottom:10px;">';
       for(const r of rows.slice(0,60)){
@@ -1751,7 +2046,7 @@
       }
       if(rows.length>60) html += '<div class="muted" style="margin-top:6px;">…and ' + (rows.length-60) + ' more</div>';
       html += '</div>';
-      html += '<div class="form-actions"><button class="primary" id="confirmMissionaryImportBtn">Confirm — add/update ' + rows.length + '</button><button class="ghost" id="cancelMissionaryImportBtn">Cancel</button></div>';
+      html += '<div class="form-actions"><button class="' + (suspiciouslyHigh?'ghost':'primary') + '" id="confirmMissionaryImportBtn">Confirm — add/update ' + rows.length + '</button><button class="ghost" id="cancelMissionaryImportBtn">Cancel</button></div>';
     }
     html += '</div>';
 
@@ -1823,13 +2118,63 @@
     html += '<button class="' + (state.tab==='baiats'?'active':'') + '" id="tabBaiats">Bai\'ats</button>';
     html += '<button class="' + (state.tab==='missionaries'?'active':'') + '" id="tabMissionaries">Missionaries</button>';
     html += '<button class="' + (state.tab==='alldaeen'?'active':'') + '" id="tabAllDaeen">All Daeen</button>';
+    html += '<button class="' + (state.tab==='allcontactsadmin'?'active':'') + '" id="tabAllContactsAdmin">All Contacts</button>';
     html += '<button class="' + (state.tab==='backup'?'active':'') + '" id="tabBackup">Backup</button>';
     html += '</nav>';
     if(state.tab==='report') return html + renderReport();
     if(state.tab==='baiats') return html + renderAdminBaiats();
     if(state.tab==='missionaries') return html + renderAdminMissionaries();
+    if(state.tab==='allcontactsadmin') return html + renderAdminAllContacts();
     if(state.tab==='backup') return html + renderAdminBackup();
     return html + renderAdminDaeen();
+  }
+
+  function renderAdminAllContacts(){
+    const weekStartC = periodStartISO('week');
+    function engagedThisWk(c){
+      return (c.lastContact && c.lastContact>=weekStartC) || (c.history||[]).some(h=>h>=weekStartC);
+    }
+    let rows = [];
+    state.missionaries.forEach(m=>{
+      (state.contactsM[m.id]||[]).forEach(c=> rows.push({c, missionary:m.name, via:''}));
+    });
+    state.daeenRoster.forEach(d=>{
+      const m = state.missionaries.find(x=>x.id===d.missionaryId);
+      (state.contactsD[d.id]||[]).forEach(c=> rows.push({c, missionary: m?m.name:'(unassigned)', via:d.name}));
+    });
+    if(state.contactsFilterNotEngaged) rows = rows.filter(r=>!engagedThisWk(r.c));
+    if(state.contactsFilterStage !== '' && state.contactsFilterStage !== undefined && state.contactsFilterStage !== null){
+      rows = rows.filter(r=>r.c.stage === parseInt(state.contactsFilterStage));
+    }
+    if(state.searchText) rows = rows.filter(r=>r.c.name.toLowerCase().includes(state.searchText.toLowerCase()));
+    rows.sort((a,b)=>{
+      const ea = engagedThisWk(a.c), eb = engagedThisWk(b.c);
+      if(ea !== eb) return ea ? 1 : -1;
+      if(a.c.stage !== b.c.stage) return a.c.stage - b.c.stage;
+      return a.c.name.localeCompare(b.c.name);
+    });
+
+    let html = '<div class="card"><h2>All Contacts (' + rows.length + ')</h2>';
+    html += '<div class="muted" style="margin-bottom:10px;">Every contact, personal or via a Daeen, across the whole org — for reviewing who needs to move to the next stage.</div>';
+    html += '<div class="row" style="gap:16px; margin-bottom:10px; align-items:center;">';
+    html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="contactsFilterNotEngaged" ' + (state.contactsFilterNotEngaged?'checked':'') + '> not contacted this week only</label>';
+    html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">Stage: <select id="contactsFilterStage"><option value="">All</option>';
+    for(let i=0;i<4;i++) html += '<option value="' + i + '" ' + (String(state.contactsFilterStage)===String(i)?'selected':'') + '>' + escapeHtml(state.stageLabels[i]) + '</option>';
+    html += '</select></label>';
+    html += '</div>';
+    html += '<div class="search-box"><input type="text" id="allContactsAdminSearch" placeholder="Search contacts…" value="' + escapeHtml(state.searchText) + '"></div>';
+    if(!rows.length) html += '<div class="empty-state">No contacts match.</div>';
+    else{
+      html += '<table class="admin-table"><thead><tr><th>Name</th><th>Stage</th><th>Connected to</th><th>This week</th></tr></thead><tbody>';
+      rows.slice(0,200).forEach(r=>{
+        const engaged = engagedThisWk(r.c);
+        html += '<tr><td>' + escapeHtml(r.c.name) + '</td><td>' + escapeHtml(state.stageLabels[r.c.stage]) + '</td><td>' + escapeHtml(r.missionary) + (r.via?(' <span class="muted">(via ' + escapeHtml(r.via) + ')</span>'):'') + '</td><td>' + (engaged?'<span class="ok-badge">contacted</span>':'<span class="flag-badge">not yet</span>') + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      if(rows.length>200) html += '<div class="muted" style="margin-top:8px;">Showing the first 200 of ' + rows.length + ' — narrow with search or filters to find specific ones.</div>';
+    }
+    html += '</div>';
+    return html;
   }
 
   // ---------- master render ----------
@@ -1890,8 +2235,16 @@
     if(tabMissionaries) tabMissionaries.addEventListener('click', ()=>{ state.tab='missionaries'; state.error=''; render(); });
     const tabAllDaeen = document.getElementById('tabAllDaeen');
     if(tabAllDaeen) tabAllDaeen.addEventListener('click', ()=>{ state.tab='alldaeen'; state.searchText=''; render(); });
+    const tabAllContactsAdmin = document.getElementById('tabAllContactsAdmin');
+    if(tabAllContactsAdmin) tabAllContactsAdmin.addEventListener('click', ()=>{ state.tab='allcontactsadmin'; state.searchText=''; render(); });
     const tabBackup = document.getElementById('tabBackup');
     if(tabBackup) tabBackup.addEventListener('click', ()=>{ state.tab='backup'; state.error=''; render(); });
+    const contactsFilterNotEngaged = document.getElementById('contactsFilterNotEngaged');
+    if(contactsFilterNotEngaged) contactsFilterNotEngaged.addEventListener('change', e=>{ state.contactsFilterNotEngaged = e.target.checked; render(); });
+    const contactsFilterStage = document.getElementById('contactsFilterStage');
+    if(contactsFilterStage) contactsFilterStage.addEventListener('change', e=>{ state.contactsFilterStage = e.target.value; render(); });
+    const allContactsAdminSearch = document.getElementById('allContactsAdminSearch');
+    if(allContactsAdminSearch) allContactsAdminSearch.addEventListener('input', e=>{ state.searchText = e.target.value; render(); });
 
     root.querySelectorAll('[data-period]').forEach(b=> b.addEventListener('click', ()=>{ state.period = b.getAttribute('data-period'); render(); }));
 
@@ -1919,9 +2272,11 @@
       showToast('Logged');
     }));
     root.querySelectorAll('[data-action="advance"]').forEach(b=> b.addEventListener('click', ()=> {
+      if(b.disabled) return;
       const list = state.contactsM[state.me.id];
       const c = (list||[]).find(x=>x.id===b.getAttribute('data-id'));
       if(c && c.stage<3){
+        b.disabled = true;
         const newStage = c.stage+1;
         updateContact(c.id, {stage:newStage}).then(()=>{
           if(newStage===3){ state.editingContactId = c.id; render(); showToast('Alhamdulillah — Bai\u2019at recorded'); }
@@ -1934,6 +2289,7 @@
     root.querySelectorAll('[data-action="cancel"]').forEach(b=> b.addEventListener('click', ()=>{ state.addingContact=false; state.editingContactId=null; render(); }));
     root.querySelectorAll('[data-action="save"]').forEach(b=>{
       b.addEventListener('click', ()=>{
+        if(b.disabled) return;
         const name = document.getElementById('fName').value.trim();
         const notes = document.getElementById('fNotes').value.trim();
         const stage = parseInt(document.getElementById('fStage').value);
@@ -1943,6 +2299,7 @@
         const nextFollowUp = document.getElementById('fNextFollowUp').value;
         const source = document.getElementById('fSource').value.trim();
         if(!name){ alert('Please enter a name.'); return; }
+        b.disabled = true; b.textContent = 'Saving\u2026';
         const editId = b.getAttribute('data-editid');
         if(editId) updateContact(editId, {name,notes,stage,lastContact,method,baiatInfo,nextFollowUp,source}); else addContact({name,notes,stage,lastContact,method,baiatInfo,nextFollowUp,source});
       });
@@ -1981,6 +2338,8 @@
     root.querySelectorAll('[data-action="addDaeenContact"]').forEach(b=> b.addEventListener('click', ()=>{ state.addingDaeenContact = b.getAttribute('data-id'); render(); }));
     root.querySelectorAll('[data-action="cancelDaeen"]').forEach(b=> b.addEventListener('click', ()=>{ state.addingDaeen=false; state.editingDaeenId=null; render(); }));
     root.querySelectorAll('[data-action="saveDaeen"]').forEach(b=> b.addEventListener('click', ()=>{
+      if(b.disabled) return;
+      b.disabled = true; b.textContent = 'Saving\u2026';
       state.newName = document.getElementById('dName').value.trim();
       state.newRegion = document.getElementById('dRegion').value.trim();
       addDaeenAssigned();
@@ -2000,9 +2359,11 @@
       if(c){ c.lastContact = todayStr(); c.method = b.getAttribute('data-method'); stampHistory(c, c.lastContact); saveContactsD(daeenId).then(render); }
     }));
     root.querySelectorAll('[data-action="dcAdvance"]').forEach(b=> b.addEventListener('click', ()=>{
+      if(b.disabled) return;
       const daeenId=b.getAttribute('data-daeenid'), id=b.getAttribute('data-id');
       const c = (state.contactsD[daeenId]||[]).find(x=>x.id===id);
       if(c && c.stage<3){
+        b.disabled = true;
         c.stage = c.stage+1;
         stampBaiat(c, c.lastContact);
         saveContactsD(daeenId).then(()=>{
@@ -2023,6 +2384,7 @@
     }));
     root.querySelectorAll('[data-action^="saveDaeenContact:"]').forEach(b=>{
       b.addEventListener('click', ()=>{
+        if(b.disabled) return;
         const daeenId = b.getAttribute('data-action').split(':')[1];
         const name = document.getElementById('fName').value.trim();
         const notes = document.getElementById('fNotes').value.trim();
@@ -2033,6 +2395,7 @@
         const nextFollowUp = document.getElementById('fNextFollowUp').value;
         const source = document.getElementById('fSource').value.trim();
         if(!name){ alert('Please enter a name.'); return; }
+        b.disabled = true; b.textContent = 'Saving\u2026';
         const editId = b.getAttribute('data-editid');
         const list = state.contactsD[daeenId] || (state.contactsD[daeenId]=[]);
         if(editId){
@@ -2066,6 +2429,7 @@
     const addMissionaryBtn = document.getElementById('addMissionaryBtn');
     if(addMissionaryBtn) addMissionaryBtn.addEventListener('click', addMissionaryAdmin);
     root.querySelectorAll('[data-action="removeMissionary"]').forEach(b=> b.addEventListener('click', ()=> removeMissionaryAdmin(b.getAttribute('data-id'))));
+    root.querySelectorAll('[data-action="resetMissionaryPassword"]').forEach(b=> b.addEventListener('click', ()=> resetMissionaryPassword(b.getAttribute('data-id'))));
     root.querySelectorAll('[data-action="toggleRL"]').forEach(cb=> cb.addEventListener('change', ()=> toggleRegionalLeader(cb.getAttribute('data-id'))));
     root.querySelectorAll('[data-action="assignRL"]').forEach(sel=> sel.addEventListener('change', e=> assignRegionalLeader(sel.getAttribute('data-id'), e.target.value)));
 
@@ -2089,10 +2453,23 @@
 
     const filterUnassigned = document.getElementById('filterUnassigned');
     if(filterUnassigned) filterUnassigned.addEventListener('change', e=>{ state.daeenFilterUnassigned = e.target.checked; render(); });
+    const filterNotContacted = document.getElementById('filterNotContacted');
+    if(filterNotContacted) filterNotContacted.addEventListener('change', e=>{ state.daeenFilterNotContacted = e.target.checked; render(); });
     const adminDaeenSearch = document.getElementById('adminDaeenSearch');
     if(adminDaeenSearch) adminDaeenSearch.addEventListener('input', e=>{ state.searchText = e.target.value; render(); });
     root.querySelectorAll('[data-action="reassign"]').forEach(sel=> sel.addEventListener('change', e=>{ reassignDaeen(sel.getAttribute('data-id'), e.target.value); }));
     root.querySelectorAll('[data-action="removeDaeen"]').forEach(b=> b.addEventListener('click', ()=> removeDaeenAdmin(b.getAttribute('data-id'))));
+
+    const addAdminMemberBtn = document.getElementById('addAdminMemberBtn');
+    if(addAdminMemberBtn) addAdminMemberBtn.addEventListener('click', ()=>{ state.addingAdminMember=true; state.newName=''; state.newPasswordInput=''; state.error=''; render(); });
+    const cancelAddAdminBtn = document.getElementById('cancelAddAdminBtn');
+    if(cancelAddAdminBtn) cancelAddAdminBtn.addEventListener('click', ()=>{ state.addingAdminMember=false; state.error=''; render(); });
+    const confirmAddAdminBtn = document.getElementById('confirmAddAdminBtn');
+    if(confirmAddAdminBtn) confirmAddAdminBtn.addEventListener('click', confirmAddAdmin);
+    const newAdminName = document.getElementById('newAdminName');
+    if(newAdminName) newAdminName.addEventListener('input', e=>{ state.newName = e.target.value; });
+    const newAdminPassword = document.getElementById('newAdminPassword');
+    if(newAdminPassword) newAdminPassword.addEventListener('input', e=>{ state.newPasswordInput = e.target.value; });
 
     const exportBackupBtn = document.getElementById('exportBackupBtn');
     if(exportBackupBtn) exportBackupBtn.addEventListener('click', exportBackup);
@@ -2106,7 +2483,8 @@
           let data;
           try{ data = JSON.parse(ev.target.result); }
           catch(err){ state.error = 'That file is not valid JSON.'; render(); return; }
-          if(!confirm('This will REPLACE all current data with this backup (from ' + (data.exportedAt||'an unknown date') + '). Continue?')) { e.target.value=''; return; }
+          const typed = prompt('This will REPLACE ALL current data with this backup (from ' + (data.exportedAt||'an unknown date') + '). This cannot be undone.\n\nType RESTORE (all caps) to confirm:');
+          if(typed !== 'RESTORE'){ e.target.value=''; return; }
           importBackup(data);
         };
         reader.readAsText(file);

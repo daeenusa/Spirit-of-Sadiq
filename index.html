@@ -289,7 +289,7 @@
 
   // ---------- storage adapter: Google Apps Script (shared) + localStorage (personal "who am I") ----------
 
-  const API_URL = 'https://script.google.com/a/macros/ahmadiyya.us/s/AKfycbxZDCueHoiNjJxKws_HDFkkmvejneJhT8ZoWvUGyZo_PEa3CPmdSArzydBPMS36VBveHA/exec';
+  const API_URL = 'https://script.google.com/macros/s/AKfycbyUS7Q5K4qTJu0Q82rM9gXw9DzGfqbOSWVAPbrZODFjjEu9OzE7a-ZSyKYoiP0Itc4m/exec';
 
   async function gsGetAll(){
     try{
@@ -815,6 +815,7 @@
     const a = {id: uid(), name, password: state.newPasswordInput};
     state.admins.push(a);
     await saveAdmins();
+    state.tab = 'report';
     await saveMe({role:'admin', id:a.id, name:a.name});
     render();
   }
@@ -866,7 +867,7 @@
     else state.tab = 'mine';
     render();
   }
-  async function chooseExistingAdmin(a){ await saveMe({role:'admin', id:a.id, name:a.name}); render(); }
+  async function chooseExistingAdmin(a){ state.tab = 'report'; await saveMe({role:'admin', id:a.id, name:a.name}); render(); }
 
   function switchIdentity(){ state.me = null; state.setupStage = 'role'; render(); }
 
@@ -1733,24 +1734,6 @@
       });
       html += '</div>';
     });
-    const coveredIds = new Set();
-    reportRegionLeaders.forEach(rl=>{
-      state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id).forEach(m=> coveredIds.add(m.id));
-    });
-    const unassignedTeam = state.missionaries.filter(m=>!coveredIds.has(m.id));
-    if(unassignedTeam.length){
-      html += '<div class="nested-block" style="margin-top:16px; padding-top:16px;">';
-      html += '<div class="name" style="font-size:16px;">Unassigned</div>';
-      unassignedTeam.forEach(m=>{
-        const met = computeMetrics(m.id);
-        const reported = hasReportedThisWeek(m.id);
-        html += '<div class="row-between" style="padding:7px 10px; margin-top:6px; margin-bottom:4px; border-radius:7px; ' + (reported?'':'background:var(--warn-soft);') + '">';
-        html += '<div style="font-weight:600; font-size:13px;">' + escapeHtml(m.name) + '</div>';
-        html += '<div class="muted" style="font-size:11.5px; text-align:right;">Daeen ' + met.daeenReachedOut + '/' + met.daeenTotal + ' &middot; Contacts ' + met.personalReachedOut + '/' + met.personalContactsTotal + ' &middot; Via Daeen ' + met.tablighReachedOut + '/' + met.tablighTotal + ' &middot; ' + met.baiats + " Bai'ats" + (reported?'':' <b style="color:var(--warn);">— not reported</b>') + '</div>';
-        html += '</div>';
-      });
-      html += '</div>';
-    }
     html += '</div>';
 
     html += renderGoalsAndGroups();
@@ -2263,9 +2246,25 @@
 
   // ---------- master render ----------
 
+  function captureFocus(){
+    const el = document.activeElement;
+    if(!el || (el.tagName!=='INPUT' && el.tagName!=='TEXTAREA') || !el.id) return null;
+    return {id: el.id, start: el.selectionStart, end: el.selectionEnd};
+  }
+  function restoreFocus(saved){
+    if(!saved || !saved.id) return;
+    const el = document.getElementById(saved.id);
+    if(el && (el.tagName==='INPUT' || el.tagName==='TEXTAREA')){
+      el.focus();
+      if(typeof saved.start === 'number' && el.setSelectionRange){
+        try{ el.setSelectionRange(saved.start, saved.end); }catch(e){}
+      }
+    }
+  }
   function render(){
+    const __focus = captureFocus();
     if(state.loading){ root.innerHTML = '<div class="app"><div class="loading">Loading…</div></div>'; return; }
-    if(!state.me){ root.innerHTML = '<div class="app">' + renderSetup() + '</div>'; attachSetupHandlers(); return; }
+    if(!state.me){ root.innerHTML = '<div class="app">' + renderSetup() + '</div>'; attachSetupHandlers(); restoreFocus(__focus); return; }
 
     const roleLabel = state.me.role==='missionary'?'Missionary':'National Access';
     let html = '<div class="app">';
@@ -2295,6 +2294,7 @@
     html += '</div>';
     root.innerHTML = html;
     attachMainHandlers();
+    restoreFocus(__focus);
   }
 
   function attachMainHandlers(){

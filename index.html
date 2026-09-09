@@ -289,7 +289,7 @@
 
   // ---------- storage adapter: Google Apps Script (shared) + localStorage (personal "who am I") ----------
 
-  const API_URL = 'https://script.google.com/macros/s/AKfycby.../exec';
+  const API_URL = 'https://script.google.com/macros/s/AKfycbyUS7Q5K4qTJu0Q82rM9gXw9DzGfqbOSWVAPbrZODFjjEu9OzE7a-ZSyKYoiP0Itc4m/exec';
 
   async function gsGetAll(){
     try{
@@ -507,6 +507,17 @@
     return (contactsArray||[]).filter(c=>c.stage===3 && c.baiatDate).map(c=>c.baiatDate);
   }
 
+  function formatBaiatDetails(c){
+    const parts = [];
+    if(c.baiatReason) parts.push(c.baiatReason);
+    const meta = [];
+    if(c.baiatAge) meta.push('Age ' + c.baiatAge);
+    if(c.baiatCity) meta.push(c.baiatCity);
+    meta.push(c.baiatFormConfirmed ? 'Form confirmed \u2713' : 'Form NOT yet confirmed');
+    parts.push(meta.join(' \u00b7 '));
+    if(c.baiatAdditionalInfo) parts.push(c.baiatAdditionalInfo);
+    return parts.join(' \u2014 ');
+  }
   function ratioColor(num, total){
     if(total<=0) return 'var(--text)';
     const pct = num/total;
@@ -1038,7 +1049,7 @@
     html += buildTrail(c.stage);
     if(c.notes) html += '<div class="notes-text">' + escapeHtml(c.notes) + '</div>';
     if(c.source) html += '<div class="muted" style="font-size:11.5px; margin-bottom:6px;">Met via: ' + escapeHtml(c.source) + '</div>';
-    if(c.stage===3 && c.baiatInfo) html += '<div class="notes-text" style="background:var(--accent-soft); padding:8px 10px; border-radius:8px;"><b>Bai\u2019at:</b> ' + escapeHtml(c.baiatInfo) + '</div>';
+    if(c.stage===3) html += '<div class="notes-text" style="background:var(--accent-soft); padding:8px 10px; border-radius:8px;"><b>Bai\u2019at:</b> ' + escapeHtml(formatBaiatDetails(c)) + '</div>';
     if((c.history||[]).length){
       const expanded = state.expandedHistoryId === c.id;
       html += '<button class="small-link" data-action="toggleHistory" data-id="' + c.id + '" style="margin-top:4px;">' + (expanded?'Hide':'View') + ' contact history (' + c.history.length + ')</button>';
@@ -1076,7 +1087,11 @@
     const stage = c ? c.stage : 0;
     const lastContact = c ? c.lastContact : todayStr();
     const method = c ? (c.method||'') : '';
-    const baiatInfo = c ? (c.baiatInfo||'') : '';
+    const baiatReason = c ? (c.baiatReason||'') : '';
+    const baiatAge = c ? (c.baiatAge||'') : '';
+    const baiatCity = c ? (c.baiatCity||'') : '';
+    const baiatFormConfirmed = c ? !!c.baiatFormConfirmed : false;
+    const baiatAdditionalInfo = c ? (c.baiatAdditionalInfo||'') : '';
     const source = c ? (c.source||'') : '';
     let html = '<div class="card">';
     html += '<div class="field"><label>Name</label><input type="text" id="fName" value="' + escapeHtml(name) + '" placeholder="Who are you reaching out to?"></div>';
@@ -1095,7 +1110,14 @@
     html += '</select></div>';
     html += '<div class="field"><label>Schedule next follow-up (optional)</label><input type="date" id="fNextFollowUp" value="' + escapeHtml(c?(c.nextFollowUp||''):'') + '"></div>';
     html += '<div id="baiatInfoWrap" style="display:' + (stage===3?'block':'none') + '; background:var(--accent-soft); border-radius:9px; padding:12px; margin-bottom:12px;">';
-    html += '<div class="field" style="margin-bottom:0;"><label>Bai\'at details</label><textarea id="fBaiatInfo" placeholder="Name confirmed, date, any relevant details for the record…">' + escapeHtml(baiatInfo) + '</textarea></div>';
+    html += '<div class="eyebrow" style="margin-bottom:8px;">Bai\u2019at details</div>';
+    html += '<div class="field"><label>Reason for Bai\u2019at</label><textarea id="fBaiatReason" placeholder="What led to this decision?">' + escapeHtml(baiatReason) + '</textarea></div>';
+    html += '<div class="row">';
+    html += '<div class="field" style="flex:1; min-width:100px;"><label>Age</label><input type="number" id="fBaiatAge" value="' + escapeHtml(baiatAge) + '" min="0"></div>';
+    html += '<div class="field" style="flex:2; min-width:160px;"><label>City</label><input type="text" id="fBaiatCity" value="' + escapeHtml(baiatCity) + '"></div>';
+    html += '</div>';
+    html += '<label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:11px; cursor:pointer;"><input type="checkbox" id="fBaiatFormConfirmed" ' + (baiatFormConfirmed?'checked':'') + '> Online Bai\u2019at form has been filled out</label>';
+    html += '<div class="field" style="margin-bottom:0;"><label>Additional information (optional)</label><textarea id="fBaiatAdditionalInfo" placeholder="Anything else for the record…">' + escapeHtml(baiatAdditionalInfo) + '</textarea></div>';
     html += '</div>';
     html += '<div class="form-actions">';
     html += '<button class="primary" data-action="' + editAction + '" data-editid="' + (c?c.id:'') + '">' + (isEdit?'Save changes':'Add contact') + '</button>';
@@ -1146,7 +1168,7 @@
   }
   async function addContact(data){
     const list = state.contactsM[state.me.id] || [];
-    const c = {id: uid(), name:data.name, notes:data.notes, stage:data.stage, lastContact:data.lastContact||todayStr(), method:data.method||'', baiatInfo:data.baiatInfo||'', nextFollowUp:data.nextFollowUp||'', source:data.source||'', created:todayStr()};
+    const c = {id: uid(), name:data.name, notes:data.notes, stage:data.stage, lastContact:data.lastContact||todayStr(), method:data.method||'', baiatReason:data.baiatReason||'', baiatAge:data.baiatAge||'', baiatCity:data.baiatCity||'', baiatFormConfirmed:!!data.baiatFormConfirmed, baiatAdditionalInfo:data.baiatAdditionalInfo||'', nextFollowUp:data.nextFollowUp||'', source:data.source||'', created:todayStr()};
     stampBaiat(c, c.lastContact); stampHistory(c, c.lastContact);
     list.push(c);
     state.contactsM[state.me.id] = list;
@@ -1330,7 +1352,11 @@
       html += '<button class="small-link" data-action="editdaeen" data-id="' + d.id + '">Edit</button>';
       html += '<button class="danger-link" data-action="deletedaeen" data-id="' + d.id + '">Remove</button>';
       html += '</div>';
-      html += '<div class="muted" style="font-size:12px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">' + (contacts.length ? ('<b>Their contacts:</b> ' + contacts.map(c=>escapeHtml(c.name)).join(', ')) : 'No contacts logged for them yet') + '</div>';
+      if(contacts.length){
+        html += '<div style="background:var(--good-soft); border-radius:8px; padding:9px 12px; margin-top:10px; font-size:12.5px; color:var(--good); font-weight:700;">\u2713 Engaging ' + contacts.length + ' contact' + (contacts.length===1?'':'s') + ': ' + contacts.map(c=>escapeHtml(c.name)).join(', ') + '</div>';
+      } else {
+        html += '<div style="background:var(--warn-soft); border-radius:8px; padding:9px 12px; margin-top:10px; font-size:12.5px; color:var(--caution); font-weight:700;">No contacts yet — add one so ' + escapeHtml(d.name) + ' can start engaging</div>';
+      }
       html += '<div class="expand-toggle"><button class="small-link" data-action="toggleexpand" data-id="' + d.id + '">' + (expanded?'Hide':'Manage') + ' their contacts' + (contacts.length?(' (' + contacts.length + ')'):'') + '</button></div>';
 
       if(expanded){
@@ -1371,7 +1397,7 @@
     html += buildTrail(c.stage);
     if(c.notes) html += '<div class="notes-text">' + escapeHtml(c.notes) + '</div>';
     if(c.source) html += '<div class="muted" style="font-size:11.5px; margin-bottom:6px;">Met via: ' + escapeHtml(c.source) + '</div>';
-    if(c.stage===3 && c.baiatInfo) html += '<div class="notes-text" style="background:var(--accent-soft); padding:8px 10px; border-radius:8px;"><b>Bai\u2019at:</b> ' + escapeHtml(c.baiatInfo) + '</div>';
+    if(c.stage===3) html += '<div class="notes-text" style="background:var(--accent-soft); padding:8px 10px; border-radius:8px;"><b>Bai\u2019at:</b> ' + escapeHtml(formatBaiatDetails(c)) + '</div>';
     html += '<div class="eyebrow" style="margin-top:12px; margin-bottom:7px;">Log an interaction</div>';
     html += '<div class="row" style="margin-bottom:12px;">';
     html += '<button class="ghost" data-action="dcLogToday" data-method="in_person" data-daeenid="' + daeenId + '" data-id="' + c.id + '">In person</button>';
@@ -1397,6 +1423,20 @@
     return {rl, team};
   }
 
+  function leaderboardRow(rank, name, tag, stats){
+    let html = '<div class="row-between" style="padding:10px 8px; margin-bottom:4px; align-items:center; border-radius:8px;' + (tag?' background:var(--accent-soft);':'') + '">';
+    html += '<div style="display:flex; align-items:center; gap:10px; min-width:0;">';
+    html += '<div style="width:24px; height:24px; border-radius:50%; background:' + (rank<=3?'var(--accent)':'var(--surface-alt)') + '; color:' + (rank<=3?'#fff':'var(--text-muted)') + '; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:11.5px; flex-shrink:0;">' + rank + '</div>';
+    html += '<div style="font-weight:700; font-size:13.5px;">' + escapeHtml(name) + (tag?(' <span class="ok-badge" style="margin-left:4px;">' + escapeHtml(tag) + '</span>'):'') + '</div>';
+    html += '</div>';
+    html += '<div style="display:flex; gap:5px; flex-wrap:wrap; justify-content:flex-end;">';
+    stats.forEach(s=>{
+      html += '<span style="background:var(--surface-alt); border-radius:6px; padding:3px 8px; font-size:11px; font-weight:800; white-space:nowrap;">' + s.value + ' <span style="font-weight:600; color:var(--text-muted); text-transform:uppercase; font-size:9.5px;">' + escapeHtml(s.label) + '</span></span>';
+    });
+    html += '</div></div>';
+    return html;
+  }
+
   function renderLeaderboardTab(){
     let html = '';
 
@@ -1419,7 +1459,12 @@
       html += '<div class="muted" style="margin-bottom:10px;">How your region\'s missionaries are doing this year.</div>';
       ranked.forEach((r,i)=>{
         const isMe = r.m.id===state.me.id;
-        html += '<div class="preview-row" style="' + (isMe?'font-weight:700;':'') + '">' + (i+1) + '. ' + escapeHtml(r.m.name) + (isMe?' (you)':'') + ' — ' + r.baiats + (r.baiats===1?' Bai\u2019at':' Bai\u2019ats') + ' <span class="muted">&middot; ' + r.activeDaeen + '/' + r.daeenTotal + ' active Daeen &middot; ' + r.personalContacts + ' personal contacts &middot; ' + r.daeenContacts + ' Daeen contacts</span></div>';
+        html += leaderboardRow(i+1, r.m.name, isMe?'you':'', [
+          {value: r.baiats, label: "Bai\u2019ats"},
+          {value: r.activeDaeen+'/'+r.daeenTotal, label: 'Daeen'},
+          {value: r.personalContacts, label: 'Contacts'},
+          {value: r.daeenContacts, label: 'Via Daeen'}
+        ]);
       });
       html += '</div>';
     } else {
@@ -1445,7 +1490,12 @@
       html += '<div class="muted" style="margin-bottom:10px;">Combined totals year to date, by region.</div>';
       regionRanked.forEach((r,i)=>{
         const isMine = mine && r.rl.id===mine.rl.id;
-        html += '<div class="preview-row" style="' + (isMine?'font-weight:700;':'') + '">' + (i+1) + '. ' + escapeHtml(r.rl.regionLabel||'Unnamed region') + (isMine?' (your region)':'') + ' <span class="muted">(' + r.size + ' missionaries)</span> — ' + r.baiats + (r.baiats===1?' Bai\u2019at':' Bai\u2019ats') + ' <span class="muted">&middot; ' + r.activeDaeen + '/' + r.daeenTotal + ' active Daeen &middot; ' + r.personalContacts + ' personal contacts &middot; ' + r.daeenContacts + ' Daeen contacts</span></div>';
+        html += leaderboardRow(i+1, (r.rl.regionLabel||'Unnamed region') + ' (' + r.size + ')', isMine?'your region':'', [
+          {value: r.baiats, label: "Bai\u2019ats"},
+          {value: r.activeDaeen+'/'+r.daeenTotal, label: 'Daeen'},
+          {value: r.personalContacts, label: 'Contacts'},
+          {value: r.daeenContacts, label: 'Via Daeen'}
+        ]);
       });
       html += '</div>';
     }
@@ -1530,20 +1580,14 @@
   function renderGoalsAndGroups(){
     let html = '';
 
-    // ----- Missionary Bai'at goals -----
+    // ----- Missionary Bai'at goals (overall summary only — detail now nested by region below) -----
     const withGoals = state.missionaries.map(m=>({m, ytd: baiatsYTDForMissionary(m.id), goal: m.target||10}));
     const metGoal = withGoals.filter(x=>x.ytd >= x.goal).length;
     const sumYtd = withGoals.reduce((s,x)=>s+x.ytd,0);
     const sumGoal = withGoals.reduce((s,x)=>s+x.goal,0);
     html += '<div class="card"><h2>Missionary Bai\'at goals (year to date)</h2>';
-    html += '<div class="muted" style="margin-bottom:10px;">' + metGoal + ' of ' + withGoals.length + ' missionaries have reached their goal</div>';
+    html += '<div class="muted" style="margin-bottom:10px;">' + metGoal + ' of ' + withGoals.length + ' missionaries have reached their goal — see the region breakdown below for who\u2019s still working toward it.</div>';
     html += progressBarHtml(sumYtd, sumGoal, 'Combined progress');
-    const behind = withGoals.filter(x=>x.ytd < x.goal).sort((a,b)=> (a.ytd/Math.max(1,a.goal)) - (b.ytd/Math.max(1,b.goal)));
-    if(behind.length){
-      html += '<div class="nested-block"><div class="muted" style="margin-bottom:8px; font-weight:700;">Still working toward goal:</div>';
-      behind.forEach(x=> html += progressBarHtml(x.ytd, x.goal, x.m.name));
-      html += '</div>';
-    }
     html += '</div>';
 
     // ----- Daeen annual Bai'at goals -----
@@ -1568,7 +1612,7 @@
     }
     html += '</div>';
 
-    // ----- By region -----
+    // ----- Progress by region, with each missionary's own goal nested underneath -----
     const leaders = state.missionaries.filter(m=>m.isRegionalLeader);
     if(leaders.length){
       html += '<div class="card"><h2>Progress by region</h2>';
@@ -1576,7 +1620,17 @@
         const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id);
         const ytd = team.reduce((s,m)=>s+baiatsYTDForMissionary(m.id),0);
         const goal = team.reduce((s,m)=>s+(m.target||10),0);
+        html += '<div class="nested-block" style="margin-top:14px; padding-top:14px;">';
         html += progressBarHtml(ytd, goal, (rl.regionLabel||rl.name) + ' (' + team.length + ' missionaries)');
+        team.slice().sort((a,b)=>{
+          const pa = baiatsYTDForMissionary(a.id)/Math.max(1,a.target||10), pb = baiatsYTDForMissionary(b.id)/Math.max(1,b.target||10);
+          return pa - pb;
+        }).forEach(m=>{
+          const mYtd = baiatsYTDForMissionary(m.id), mGoal = m.target||10;
+          const met = mYtd >= mGoal;
+          html += '<div class="row-between" style="padding:5px 8px; font-size:12.5px;"><span>' + escapeHtml(m.name) + '</span><span style="font-weight:700; color:' + (met?'var(--good)':'var(--text-muted)') + ';">' + mYtd + '/' + mGoal + (met?' \u2713':'') + '</span></div>';
+        });
+        html += '</div>';
       });
       html += '</div>';
     }
@@ -1622,12 +1676,17 @@
     const engagedLastWeekWow = allContacts.filter(c=> (c.history||[]).some(h=>h>=lastWeek.start && h<lastWeek.end) || (c.lastContact && c.lastContact>=lastWeek.start && c.lastContact<lastWeek.end)).length;
     const daeenEngagedThisWeek = state.daeenRoster.filter(d=> (d.lastEngaged && d.lastEngaged>=weekStart) || (state.contactsD[d.id]||[]).some(c=>(c.history||[]).some(h=>h>=weekStart))).length;
     const daeenEngagedLastWeek = state.daeenRoster.filter(d=> (d.lastEngaged && d.lastEngaged>=lastWeek.start && d.lastEngaged<lastWeek.end) || (state.contactsD[d.id]||[]).some(c=>(c.history||[]).some(h=>h>=lastWeek.start && h<lastWeek.end))).length;
+    let daeenOwnedContactsWow = [];
+    state.daeenRoster.forEach(d=> daeenOwnedContactsWow = daeenOwnedContactsWow.concat(state.contactsD[d.id]||[]));
+    const daeenContactsThisWeek = daeenOwnedContactsWow.filter(c=> (c.lastContact && c.lastContact>=weekStart) || (c.history||[]).some(h=>h>=weekStart)).length;
+    const daeenContactsLastWeek = daeenOwnedContactsWow.filter(c=> (c.history||[]).some(h=>h>=lastWeek.start && h<lastWeek.end) || (c.lastContact && c.lastContact>=lastWeek.start && c.lastContact<lastWeek.end)).length;
 
     html += '<div class="card"><h2>Week over week</h2>';
     html += '<div class="muted" style="margin-bottom:6px;">Is the org trending up or down compared to last week?</div>';
     html += weekTrendRow("Bai\u2019ats", baiatsThisWeek, baiatsLastWeek);
     html += weekTrendRow('Contacts engaged', engagedThisWeekWow, engagedLastWeekWow);
     html += weekTrendRow('Daeen engaged', daeenEngagedThisWeek, daeenEngagedLastWeek);
+    html += weekTrendRow('Daeen contacts engaged', daeenContactsThisWeek, daeenContactsLastWeek);
     html += '</div>';
 
     html += '<div class="card"><div class="row-between"><h2>National funnel</h2>' + periodToggleHtml() + '</div>';
@@ -1640,50 +1699,61 @@
     html += '</div>';
 
     const reportRegionLeaders = state.missionaries.filter(m=>m.isRegionalLeader);
-    if(reportRegionLeaders.length){
-      html += '<div class="card"><h2>By region</h2>';
-      reportRegionLeaders.forEach(rl=>{
-        const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id);
-        let dR=0, dT=0, cR=0, cT=0, bM=0;
-        team.forEach(m=>{
-          const met = computeMetrics(m.id);
-          dR += met.daeenReachedOut; dT += met.daeenTotal;
-          cR += met.personalReachedOut; cT += met.personalContactsTotal;
-          bM += met.baiats;
-        });
-        html += '<div class="missionary-block"><div class="name">' + escapeHtml(rl.regionLabel||'Unnamed region') + '</div><div class="muted">' + team.length + ' missionaries</div>';
-        html += '<div class="metric-grid" style="margin-top:8px;">';
-        html += metricTileColored(dR, dT, 'Daeen reached out to');
-        html += metricTileColored(cR, cT, 'Personal contacts reached out to');
-        html += metricTile(bM, "Bai'ats this month");
-        html += '</div></div>';
+    html += '<div class="card"><div class="row-between"><h2>By region — with reporting compliance</h2><button class="ghost" id="copySummaryBtn">Copy weekly report</button></div>';
+    html += '<div class="muted" style="margin-bottom:12px;">Region totals, who hasn\u2019t reported yet, and each missionary\u2019s numbers.</div>';
+    reportRegionLeaders.forEach(rl=>{
+      const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id);
+      let dR=0, dT=0, cR=0, cT=0, bM=0, dcR=0, dcT=0;
+      team.forEach(m=>{
+        const met = computeMetrics(m.id);
+        dR += met.daeenReachedOut; dT += met.daeenTotal;
+        cR += met.personalReachedOut; cT += met.personalContactsTotal;
+        dcR += met.tablighReachedOut; dcT += met.tablighTotal;
+        bM += met.baiats;
+      });
+      const notReported = team.filter(m=>!hasReportedThisWeek(m.id));
+      html += '<div class="nested-block" style="margin-top:16px; padding-top:16px;">';
+      html += '<div class="row-between"><div class="name" style="font-size:16px;">' + escapeHtml(rl.regionLabel||'Unnamed region') + '</div><div class="muted">' + team.length + ' missionaries</div></div>';
+      html += '<div class="metric-grid" style="margin-top:8px; margin-bottom:8px;">';
+      html += metricTileColored(dR, dT, 'Daeen reached out to');
+      html += metricTileColored(cR, cT, 'Personal contacts reached out to');
+      html += metricTileColored(dcR, dcT, 'Contacts reached by Daeen');
+      html += metricTile(bM, "Bai'ats this month");
+      html += '</div>';
+      if(notReported.length){
+        html += '<div class="flag-badge" style="display:block; padding:8px 12px; margin-bottom:10px;">Didn\u2019t report this week: ' + notReported.map(m=>escapeHtml(m.name)).join(', ') + '</div>';
+      }
+      team.slice().sort((a,b)=> (hasReportedThisWeek(a.id)?1:0) - (hasReportedThisWeek(b.id)?1:0)).forEach(m=>{
+        const met = computeMetrics(m.id);
+        const reported = hasReportedThisWeek(m.id);
+        html += '<div class="row-between" style="padding:7px 10px; margin-bottom:4px; border-radius:7px; ' + (reported?'':'background:var(--warn-soft);') + '">';
+        html += '<div style="font-weight:600; font-size:13px;">' + escapeHtml(m.name) + '</div>';
+        html += '<div class="muted" style="font-size:11.5px; text-align:right;">Daeen ' + met.daeenReachedOut + '/' + met.daeenTotal + ' &middot; Contacts ' + met.personalReachedOut + '/' + met.personalContactsTotal + ' &middot; Via Daeen ' + met.tablighReachedOut + '/' + met.tablighTotal + ' &middot; ' + met.baiats + " Bai'ats" + (reported?'':' <b style="color:var(--warn);">— not reported</b>') + '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    });
+    const coveredIds = new Set();
+    reportRegionLeaders.forEach(rl=>{
+      state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id).forEach(m=> coveredIds.add(m.id));
+    });
+    const unassignedTeam = state.missionaries.filter(m=>!coveredIds.has(m.id));
+    if(unassignedTeam.length){
+      html += '<div class="nested-block" style="margin-top:16px; padding-top:16px;">';
+      html += '<div class="name" style="font-size:16px;">Unassigned</div>';
+      unassignedTeam.forEach(m=>{
+        const met = computeMetrics(m.id);
+        const reported = hasReportedThisWeek(m.id);
+        html += '<div class="row-between" style="padding:7px 10px; margin-top:6px; margin-bottom:4px; border-radius:7px; ' + (reported?'':'background:var(--warn-soft);') + '">';
+        html += '<div style="font-weight:600; font-size:13px;">' + escapeHtml(m.name) + '</div>';
+        html += '<div class="muted" style="font-size:11.5px; text-align:right;">Daeen ' + met.daeenReachedOut + '/' + met.daeenTotal + ' &middot; Contacts ' + met.personalReachedOut + '/' + met.personalContactsTotal + ' &middot; Via Daeen ' + met.tablighReachedOut + '/' + met.tablighTotal + ' &middot; ' + met.baiats + " Bai'ats" + (reported?'':' <b style="color:var(--warn);">— not reported</b>') + '</div>';
+        html += '</div>';
       });
       html += '</div>';
     }
+    html += '</div>';
 
     html += renderGoalsAndGroups();
-
-    html += '<div class="card"><div class="row-between"><h2>Reporting compliance — by missionary</h2><button class="ghost" id="copySummaryBtn">Copy Tuesday report</button></div>';
-    if(!state.missionaries.length) html += '<div class="empty-state">No missionaries registered yet.</div>';
-    const sorted = state.missionaries.slice().sort((a,b)=>{
-      return (hasReportedThisWeek(a.id)?0:1) - (hasReportedThisWeek(b.id)?0:1);
-    });
-    for(const m of sorted){
-      const metrics = computeMetrics(m.id);
-      const regionalLeader = m.regionalLeaderId ? state.missionaries.find(rl=>rl.id===m.regionalLeaderId) : null;
-      const reportedThisWeek = hasReportedThisWeek(m.id);
-      html += '<div class="missionary-block"><div class="row-between"><div><div class="name">' + escapeHtml(m.name) + (m.isRegionalLeader?' <span class="ok-badge" style="margin-left:6px;">' + escapeHtml(m.regionLabel||'Regional') + '</span>':'') + '</div>';
-      html += '<div class="muted" style="margin-top:2px;">' + (regionalLeader?('Reports to ' + escapeHtml(regionalLeader.name)):'') + '</div></div>';
-      html += reportedThisWeek ? '<span class="ok-badge">Reported this week</span>' : '<span class="flag-badge">Needs this week\u2019s update</span>';
-      html += '</div>';
-      html += '<div class="metric-grid" style="margin-top:10px;">';
-      html += metricTileColored(metrics.daeenReachedOut, metrics.daeenTotal, 'Daeen reached out to');
-      html += metricTileColored(metrics.personalReachedOut, metrics.personalContactsTotal, 'Personal contacts reached out to');
-      html += metricTile(metrics.baiats, "Bai'ats this month");
-      html += metricTile(metrics.tablighReachedOut + '/' + metrics.tablighTotal, 'Contacts reached by Daeen');
-      html += '</div></div>';
-    }
-    html += '</div>';
 
     html += '<div class="card" id="summaryCard" style="display:none;"><h2>Report text</h2><div class="muted">Copy this into your group chat for the weekly review.</div><div class="summary-box" id="summaryText"></div></div>';
     return html;
@@ -1880,22 +1950,36 @@
     render();
   }
 
+  function reachedOutYTD(contactsList){
+    const yearStart = new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10);
+    const reached = (contactsList||[]).filter(c=> (c.lastContact && c.lastContact>=yearStart) || (c.history||[]).some(h=>h>=yearStart));
+    return {reached: reached.length, total: (contactsList||[]).length};
+  }
+  function regionSortKey(m){
+    const label = getMissionaryRegionLabel(m);
+    if(!label) return 'zzz9_unassigned';
+    if(/alt/i.test(label)) return 'zzz1_' + label;
+    return label;
+  }
   function renderAdminMissionaries(){
     let html = '<div class="card"><h2>All missionaries</h2>';
     html += '<div class="muted" style="margin-bottom:10px;">Mark the 6–7 who lead a region, then assign every other missionary to report to one of them. Sorted by region.</div>';
     if(!state.missionaries.length) html += '<div class="empty-state">None yet.</div>';
     const regionalLeaders = state.missionaries.filter(m=>m.isRegionalLeader);
     const sorted = state.missionaries.slice().sort((a,b)=>{
-      const ra = getMissionaryRegionLabel(a) || 'zzz', rb = getMissionaryRegionLabel(b) || 'zzz';
+      const ra = regionSortKey(a), rb = regionSortKey(b);
       if(ra !== rb) return ra.localeCompare(rb);
       if(a.isRegionalLeader !== b.isRegionalLeader) return a.isRegionalLeader ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
-    html += '<table class="admin-table"><thead><tr><th>Name</th><th>Region</th><th>Regional?</th><th>Reports to</th><th>Daeen</th><th>Bai\u2019ats YTD</th><th>Contacts this wk</th><th>Daeen contacts this wk</th><th></th></tr></thead><tbody>';
+    html += '<table class="admin-table"><thead><tr><th>Name</th><th>Region</th><th>Regional?</th><th>Reports to</th><th>Daeen</th><th>Bai\u2019ats YTD</th><th>Contacts YTD</th><th>Daeen contacts YTD</th><th></th></tr></thead><tbody>';
     for(const m of sorted){
       const count = state.daeenRoster.filter(d=>d.missionaryId===m.id).length;
-      const metrics = computeMetrics(m.id);
       const baiats = baiatsYTDForMissionary(m.id);
+      const personalYTD = reachedOutYTD(state.contactsM[m.id]||[]);
+      let daeenContacts = [];
+      state.daeenRoster.filter(d=>d.missionaryId===m.id).forEach(d=> daeenContacts = daeenContacts.concat(state.contactsD[d.id]||[]));
+      const daeenYTD = reachedOutYTD(daeenContacts);
       html += '<tr><td>' + escapeHtml(m.name) + '</td><td>' + escapeHtml(getMissionaryRegionLabel(m)||'—') + '</td>';
       html += '<td><input type="checkbox" data-action="toggleRL" data-id="' + m.id + '" ' + (m.isRegionalLeader?'checked':'') + '></td>';
       if(m.isRegionalLeader){ html += '<td>—</td>'; }
@@ -1906,9 +1990,9 @@
       }
       html += '<td>' + count + '</td>';
       html += '<td style="color:' + (baiats>0?'var(--good)':'var(--text-muted)') + '; font-weight:700;">' + baiats + '</td>';
-      html += '<td style="color:' + ratioColor(metrics.personalReachedOut, metrics.personalContactsTotal) + ';">' + metrics.personalReachedOut + '/' + metrics.personalContactsTotal + '</td>';
-      html += '<td style="color:' + ratioColor(metrics.tablighReachedOut, metrics.tablighTotal) + ';">' + metrics.tablighReachedOut + '/' + metrics.tablighTotal + '</td>';
-      html += '<td><button class="small-link" data-action="resetMissionaryPassword" data-id="' + m.id + '">Reset password</button> <button class="danger-link" data-action="removeMissionary" data-id="' + m.id + '">Remove</button></td></tr>';
+      html += '<td style="color:' + ratioColor(personalYTD.reached, personalYTD.total) + ';">' + personalYTD.reached + '/' + personalYTD.total + '</td>';
+      html += '<td style="color:' + ratioColor(daeenYTD.reached, daeenYTD.total) + ';">' + daeenYTD.reached + '/' + daeenYTD.total + '</td>';
+      html += '<td><div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;"><button class="small-link" data-action="resetMissionaryPassword" data-id="' + m.id + '">Reset password</button><button class="danger-link" data-action="removeMissionary" data-id="' + m.id + '">Remove</button></div></td></tr>';
     }
     html += '</tbody></table></div>';
 
@@ -2083,14 +2167,14 @@
     for(const m of state.missionaries){
       const region = getMissionaryRegionLabel(m);
       for(const c of (state.contactsM[m.id]||[])){
-        if(c.stage===3 && c.baiatDate) rows.push({missionary:m.name, region, contactName:c.name, baiatDate:c.baiatDate, info:c.baiatInfo||'', via:''});
+        if(c.stage===3 && c.baiatDate) rows.push({missionary:m.name, region, contactName:c.name, baiatDate:c.baiatDate, reason:c.baiatReason||'', age:c.baiatAge||'', city:c.baiatCity||'', formConfirmed:!!c.baiatFormConfirmed, additionalInfo:c.baiatAdditionalInfo||'', via:''});
       }
     }
     for(const d of state.daeenRoster){
       const m = state.missionaries.find(x=>x.id===d.missionaryId);
       const region = m ? getMissionaryRegionLabel(m) : '';
       for(const c of (state.contactsD[d.id]||[])){
-        if(c.stage===3 && c.baiatDate) rows.push({missionary: m?m.name:'(unassigned)', region, contactName:c.name, baiatDate:c.baiatDate, info:c.baiatInfo||'', via:d.name});
+        if(c.stage===3 && c.baiatDate) rows.push({missionary: m?m.name:'(unassigned)', region, contactName:c.name, baiatDate:c.baiatDate, reason:c.baiatReason||'', age:c.baiatAge||'', city:c.baiatCity||'', formConfirmed:!!c.baiatFormConfirmed, additionalInfo:c.baiatAdditionalInfo||'', via:d.name});
       }
     }
     return rows.sort((a,b)=> (b.baiatDate||'').localeCompare(a.baiatDate||''));
@@ -2102,9 +2186,9 @@
     html += '<div class="muted" style="margin-bottom:10px;">' + rows.length + ' total. Full names and details — National Access only. Regional Leaders and the National Report only see counts.</div>';
     if(!rows.length) html += '<div class="empty-state">No Bai\'ats recorded yet.</div>';
     else{
-      html += '<table class="admin-table"><thead><tr><th>Date</th><th>Name</th><th>Missionary</th><th>Region</th><th>Details</th></tr></thead><tbody>';
+      html += '<table class="admin-table"><thead><tr><th>Date</th><th>Name</th><th>Missionary</th><th>Region</th><th>Reason</th><th>Age</th><th>City</th><th>Form</th><th>Additional info</th></tr></thead><tbody>';
       rows.forEach(r=>{
-        html += '<tr><td>' + escapeHtml(r.baiatDate) + '</td><td>' + escapeHtml(r.contactName) + '</td><td>' + escapeHtml(r.missionary) + (r.via?(' <span class="muted">(via ' + escapeHtml(r.via) + ')</span>'):'') + '</td><td>' + escapeHtml(r.region||'—') + '</td><td>' + escapeHtml(r.info||'—') + '</td></tr>';
+        html += '<tr><td>' + escapeHtml(r.baiatDate) + '</td><td>' + escapeHtml(r.contactName) + '</td><td>' + escapeHtml(r.missionary) + (r.via?(' <span class="muted">(via ' + escapeHtml(r.via) + ')</span>'):'') + '</td><td>' + escapeHtml(r.region||'—') + '</td><td>' + escapeHtml(r.reason||'—') + '</td><td>' + escapeHtml(String(r.age||'—')) + '</td><td>' + escapeHtml(r.city||'—') + '</td><td>' + (r.formConfirmed?'<span class="ok-badge">\u2713</span>':'<span class="flag-badge">not yet</span>') + '</td><td>' + escapeHtml(r.additionalInfo||'—') + '</td></tr>';
       });
       html += '</tbody></table>';
     }
@@ -2295,13 +2379,18 @@
         const stage = parseInt(document.getElementById('fStage').value);
         const lastContact = document.getElementById('fDate').value || todayStr();
         const method = document.getElementById('fMethod').value;
-        const baiatInfo = document.getElementById('fBaiatInfo').value.trim();
+        const baiatReason = document.getElementById('fBaiatReason').value.trim();
+        const baiatAge = document.getElementById('fBaiatAge').value;
+        const baiatCity = document.getElementById('fBaiatCity').value.trim();
+        const baiatFormConfirmed = document.getElementById('fBaiatFormConfirmed').checked;
+        const baiatAdditionalInfo = document.getElementById('fBaiatAdditionalInfo').value.trim();
         const nextFollowUp = document.getElementById('fNextFollowUp').value;
         const source = document.getElementById('fSource').value.trim();
         if(!name){ alert('Please enter a name.'); return; }
         b.disabled = true; b.textContent = 'Saving\u2026';
         const editId = b.getAttribute('data-editid');
-        if(editId) updateContact(editId, {name,notes,stage,lastContact,method,baiatInfo,nextFollowUp,source}); else addContact({name,notes,stage,lastContact,method,baiatInfo,nextFollowUp,source});
+        const payload = {name,notes,stage,lastContact,method,baiatReason,baiatAge,baiatCity,baiatFormConfirmed,baiatAdditionalInfo,nextFollowUp,source};
+        if(editId) updateContact(editId, payload); else addContact(payload);
       });
     });
     root.querySelectorAll('[data-action="toggleHistory"]').forEach(b=> b.addEventListener('click', ()=>{
@@ -2391,19 +2480,24 @@
         const stage = parseInt(document.getElementById('fStage').value);
         const lastContact = document.getElementById('fDate').value || todayStr();
         const method = document.getElementById('fMethod').value;
-        const baiatInfo = document.getElementById('fBaiatInfo').value.trim();
+        const baiatReason = document.getElementById('fBaiatReason').value.trim();
+        const baiatAge = document.getElementById('fBaiatAge').value;
+        const baiatCity = document.getElementById('fBaiatCity').value.trim();
+        const baiatFormConfirmed = document.getElementById('fBaiatFormConfirmed').checked;
+        const baiatAdditionalInfo = document.getElementById('fBaiatAdditionalInfo').value.trim();
         const nextFollowUp = document.getElementById('fNextFollowUp').value;
         const source = document.getElementById('fSource').value.trim();
         if(!name){ alert('Please enter a name.'); return; }
         b.disabled = true; b.textContent = 'Saving\u2026';
         const editId = b.getAttribute('data-editid');
         const list = state.contactsD[daeenId] || (state.contactsD[daeenId]=[]);
+        const fields = {name,notes,stage,lastContact,method,baiatReason,baiatAge,baiatCity,baiatFormConfirmed,baiatAdditionalInfo,nextFollowUp,source};
         if(editId){
           const c = list.find(x=>x.id===editId);
-          if(c){ Object.assign(c, {name,notes,stage,lastContact,method,baiatInfo,nextFollowUp,source}); stampBaiat(c, lastContact); stampHistory(c, lastContact); }
+          if(c){ Object.assign(c, fields); stampBaiat(c, lastContact); stampHistory(c, lastContact); }
           state.editingDaeenContactId = null;
         } else {
-          const c = {id:uid(), name, notes, stage, lastContact, method, baiatInfo, nextFollowUp, source, created: todayStr()};
+          const c = Object.assign({id:uid(), created: todayStr()}, fields);
           stampBaiat(c, lastContact); stampHistory(c, lastContact);
           list.push(c);
           state.addingDaeenContact = null;

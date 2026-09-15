@@ -216,6 +216,11 @@
     daeenFilterNotContacted: false,
     contactsFilterNotEngaged: false,
     contactsFilterStage: '',
+    baiatFilterRegion: '',
+    baiatFilterMissionary: '',
+    baiatFilterAuxiliary: '',
+    baiatFilterGender: '',
+    baiatFilterMonth: '',
     newName: '',
     newRegion: '',
     newGroups: [],
@@ -1480,16 +1485,17 @@
     return {rl, team};
   }
 
-  function leaderboardRow(rank, name, tag, stats){
+  function leaderboardRow(rank, name, tag, stats, extraHtml){
     let html = '<div class="row-between" style="padding:10px 8px; margin-bottom:4px; align-items:center; border-radius:8px;' + (tag?' background:var(--accent-soft);':'') + '">';
     html += '<div style="display:flex; align-items:center; gap:10px; min-width:0;">';
     html += '<div style="width:24px; height:24px; border-radius:50%; background:' + (rank<=3?'var(--accent)':'var(--surface-alt)') + '; color:' + (rank<=3?'#fff':'var(--text-muted)') + '; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:11.5px; flex-shrink:0;">' + rank + '</div>';
     html += '<div style="font-weight:700; font-size:13.5px;">' + escapeHtml(name) + (tag?(' <span class="ok-badge" style="margin-left:4px;">' + escapeHtml(tag) + '</span>'):'') + '</div>';
     html += '</div>';
-    html += '<div style="display:flex; gap:5px; flex-wrap:wrap; justify-content:flex-end;">';
+    html += '<div style="display:flex; gap:5px; flex-wrap:wrap; justify-content:flex-end; align-items:center;">';
     stats.forEach(s=>{
       html += '<span style="background:var(--surface-alt); border-radius:6px; padding:3px 8px; font-size:11px; font-weight:800; white-space:nowrap;">' + s.value + ' <span style="font-weight:600; color:var(--text-muted); text-transform:uppercase; font-size:9.5px;">' + escapeHtml(s.label) + '</span></span>';
     });
+    if(extraHtml) html += extraHtml;
     html += '</div></div>';
     return html;
   }
@@ -1561,9 +1567,13 @@
     if(baiatRows.length){
       html += '<div class="card"><h2>List of Bai\'ats</h2>';
       html += '<div class="muted" style="margin-bottom:10px;">Every Bai\u2019at across the org — a reminder of what this work is for.</div>';
-      baiatRows.forEach(r=>{
+      baiatRows.forEach((r,i)=>{
         const aux = computeAuxiliary(r.age, r.gender);
-        html += '<div class="preview-row"><b>' + escapeHtml(r.contactName) + '</b>' + (r.city?(' \u2014 ' + escapeHtml(r.city)):'') + ' <span class="muted">&middot; introduced by ' + escapeHtml(r.introducedBy) + (r.via?' (Daeen)':' (Missionary)') + (aux?(' &middot; ' + escapeHtml(aux)):'') + '</span></div>';
+        html += leaderboardRow(i+1, r.contactName, '', [
+          {value: r.city||'\u2014', label: 'City'},
+          {value: r.introducedBy, label: r.via?'Daeen':'Missionary'},
+          {value: aux||'\u2014', label: 'Tajneed'}
+        ]);
       });
       html += '</div>';
     }
@@ -2261,42 +2271,63 @@
   }
 
   function renderAdminBaiats(){
-    const rows = collectAllBaiats();
-    let html = '<div class="card"><h2>All Bai\'ats</h2>';
-    html += '<div class="muted" style="margin-bottom:10px;">' + rows.length + ' total. Full names and details — National Access only. Tap a row for the full record.</div>';
-    if(!rows.length) html += '<div class="empty-state">No Bai\'ats recorded yet.</div>';
+    let rows = collectAllBaiats();
+    const regionOptions = Array.from(new Set(rows.map(r=>r.region).filter(Boolean))).sort();
+    const missionaryOptions = Array.from(new Set(rows.map(r=>r.missionary).filter(Boolean))).sort();
+    const monthOptions = Array.from(new Set(rows.map(r=> r.baiatDate ? r.baiatDate.slice(0,7) : '').filter(Boolean))).sort().reverse();
+    const auxOptions = ['Atfal','Khuddam','Ansar','Nasirat','Lajna'];
+
+    if(state.baiatFilterRegion) rows = rows.filter(r=>r.region===state.baiatFilterRegion);
+    if(state.baiatFilterMissionary) rows = rows.filter(r=>r.missionary===state.baiatFilterMissionary);
+    if(state.baiatFilterGender) rows = rows.filter(r=>r.gender===state.baiatFilterGender);
+    if(state.baiatFilterAuxiliary) rows = rows.filter(r=>computeAuxiliary(r.age,r.gender)===state.baiatFilterAuxiliary);
+    if(state.baiatFilterMonth) rows = rows.filter(r=> r.baiatDate && r.baiatDate.slice(0,7)===state.baiatFilterMonth);
+
+    let html = '<div class="card"><h2>All Bai\'ats (' + rows.length + ')</h2>';
+    html += '<div class="muted" style="margin-bottom:10px;">Full names and details — National Access only. Tap + for the full record.</div>';
+
+    html += '<div class="row" style="gap:8px; margin-bottom:14px; flex-wrap:wrap;">';
+    html += '<select id="baiatFilterRegion"><option value="">All regions</option>';
+    regionOptions.forEach(r=> html += '<option value="' + escapeHtml(r) + '" ' + (state.baiatFilterRegion===r?'selected':'') + '>' + escapeHtml(r) + '</option>');
+    html += '</select>';
+    html += '<select id="baiatFilterMissionary"><option value="">All missionaries</option>';
+    missionaryOptions.forEach(m=> html += '<option value="' + escapeHtml(m) + '" ' + (state.baiatFilterMissionary===m?'selected':'') + '>' + escapeHtml(m) + '</option>');
+    html += '</select>';
+    html += '<select id="baiatFilterAuxiliary"><option value="">All auxiliaries</option>';
+    auxOptions.forEach(a=> html += '<option value="' + a + '" ' + (state.baiatFilterAuxiliary===a?'selected':'') + '>' + a + '</option>');
+    html += '</select>';
+    html += '<select id="baiatFilterGender"><option value="">All genders</option><option value="Male" ' + (state.baiatFilterGender==='Male'?'selected':'') + '>Male</option><option value="Female" ' + (state.baiatFilterGender==='Female'?'selected':'') + '>Female</option></select>';
+    html += '<select id="baiatFilterMonth"><option value="">All months</option>';
+    monthOptions.forEach(mo=> html += '<option value="' + mo + '" ' + (state.baiatFilterMonth===mo?'selected':'') + '>' + mo + '</option>');
+    html += '</select>';
+    html += '</div>';
+
+    if(!rows.length) html += '<div class="empty-state">No Bai\'ats match.</div>';
     else{
-      rows.forEach(r=>{
+      rows.forEach((r,i)=>{
         const aux = computeAuxiliary(r.age, r.gender);
         const expanded = state.expandedBaiatId === r.id;
-        html += '<div class="contact-card">';
-        html += '<div class="contact-top" style="cursor:pointer;" data-action="toggleBaiatExpand" data-id="' + r.id + '">';
-        html += '<div><div class="contact-name">' + escapeHtml(r.contactName) + '</div>';
-        html += '<div class="contact-meta">' + escapeHtml(r.baiatDate) + ' &middot; Introduced by ' + escapeHtml(r.introducedBy) + (r.via?' <span class="muted">(Daeen)</span>':' <span class="muted">(Missionary)</span>') + (r.region?(' &middot; ' + escapeHtml(r.region)):'') + '</div></div>';
-        html += (r.formConfirmed?'<span class="ok-badge">Form \u2713</span>':'<span class="flag-badge">Form not yet</span>');
-        html += '</div>';
-        html += '<div class="row" style="margin-top:8px; gap:6px;">';
-        if(r.age) html += '<span style="background:var(--surface-alt); border-radius:6px; padding:3px 9px; font-size:11.5px; font-weight:700;">Age ' + escapeHtml(String(r.age)) + '</span>';
-        if(aux) html += '<span style="background:var(--surface-alt); border-radius:6px; padding:3px 9px; font-size:11.5px; font-weight:700;">' + escapeHtml(aux) + '</span>';
-        if(r.gender) html += '<span style="background:var(--surface-alt); border-radius:6px; padding:3px 9px; font-size:11.5px; font-weight:700;">' + escapeHtml(r.gender) + '</span>';
-        if(r.city) html += '<span style="background:var(--surface-alt); border-radius:6px; padding:3px 9px; font-size:11.5px; font-weight:700;">' + escapeHtml(r.city) + '</span>';
-        if(r.ethnicity) html += '<span style="background:var(--surface-alt); border-radius:6px; padding:3px 9px; font-size:11.5px; font-weight:700;">' + escapeHtml(r.ethnicity) + '</span>';
-        html += '</div>';
-        html += '<button class="small-link" data-action="toggleBaiatExpand" data-id="' + r.id + '" style="margin-top:8px;">' + (expanded?'Hide full record':'View full record') + '</button>';
+        const expandBtn = '<button class="ghost" data-action="toggleBaiatExpand" data-id="' + r.id + '" style="padding:3px 11px; font-size:14px; line-height:1; font-weight:800;">' + (expanded?'\u2212':'+') + '</button>';
+        html += leaderboardRow(i+1, r.contactName, '', [
+          {value: r.baiatDate, label: 'Date'},
+          {value: aux||'\u2014', label: 'Tajneed'},
+          {value: r.formConfirmed?'\u2713':'\u2014', label: 'Form'}
+        ], expandBtn);
         if(expanded){
-          html += '<div class="nested-block">';
+          html += '<div class="nested-block" style="margin-top:0; margin-bottom:10px;">';
+          html += '<div class="muted" style="margin-bottom:8px;">Introduced by ' + escapeHtml(r.introducedBy) + (r.via?' (Daeen)':' (Missionary)') + (r.region?(' &middot; ' + escapeHtml(r.region)):'') + '</div>';
           html += '<div class="field" style="margin-bottom:14px;"><label>Status</label><select data-action="updateBaiatStatus" data-contactid="' + r.id + '" data-sourcetype="' + r.sourceType + '" data-sourceid="' + r.sourceId + '">';
-          for(let i=0;i<4;i++) html += '<option value="' + i + '" ' + (i===3?'selected':'') + '>' + escapeHtml(state.stageLabels[i]) + '</option>';
+          for(let s=0;s<4;s++) html += '<option value="' + s + '" ' + (s===3?'selected':'') + '>' + escapeHtml(state.stageLabels[s]) + '</option>';
           html += '</select><div class="muted" style="margin-top:5px;">Changing this away from Bai\u2019at removes them from this list.</div></div>';
-          html += '<div class="preview-row"><b>Context/Notes:</b> ' + escapeHtml(r.reason||'—') + '</div>';
-          html += '<div class="preview-row"><b>Met in person:</b> ' + escapeHtml(r.metInPerson||'—') + '</div>';
-          html += '<div class="preview-row"><b>Faith at Bai\u2019at:</b> ' + escapeHtml(r.faithAtBaiat||'—') + '</div>';
-          html += '<div class="preview-row"><b>Faith at birth:</b> ' + escapeHtml(r.faithAtBirth||'—') + '</div>';
-          html += '<div class="preview-row"><b>Motivation:</b> ' + escapeHtml(r.motivation||'—') + '</div>';
-          html += '<div class="preview-row"><b>Their journey learning Islam:</b> ' + escapeHtml(r.additionalInfo||'—') + '</div>';
+          html += '<div class="preview-row"><b>Age:</b> ' + escapeHtml(String(r.age||'\u2014')) + ' &middot; <b>Gender:</b> ' + escapeHtml(r.gender||'\u2014') + ' &middot; <b>City:</b> ' + escapeHtml(r.city||'\u2014') + ' &middot; <b>Ethnicity:</b> ' + escapeHtml(r.ethnicity||'\u2014') + '</div>';
+          html += '<div class="preview-row"><b>Context/Notes:</b> ' + escapeHtml(r.reason||'\u2014') + '</div>';
+          html += '<div class="preview-row"><b>Met in person:</b> ' + escapeHtml(r.metInPerson||'\u2014') + '</div>';
+          html += '<div class="preview-row"><b>Faith at Bai\u2019at:</b> ' + escapeHtml(r.faithAtBaiat||'\u2014') + '</div>';
+          html += '<div class="preview-row"><b>Faith at birth:</b> ' + escapeHtml(r.faithAtBirth||'\u2014') + '</div>';
+          html += '<div class="preview-row"><b>Motivation:</b> ' + escapeHtml(r.motivation||'\u2014') + '</div>';
+          html += '<div class="preview-row"><b>Their journey learning Islam:</b> ' + escapeHtml(r.additionalInfo||'\u2014') + '</div>';
           html += '</div>';
         }
-        html += '</div>';
       });
     }
     html += '</div>';
@@ -2703,6 +2734,16 @@
       if(!confirm('Change this person\u2019s stage? If moved away from Bai\u2019at, they\u2019ll disappear from this list.')){ render(); return; }
       updateBaiatStatusAdmin(sel.getAttribute('data-contactid'), sel.getAttribute('data-sourcetype'), sel.getAttribute('data-sourceid'), e.target.value);
     }));
+    const baiatFilterRegion = document.getElementById('baiatFilterRegion');
+    if(baiatFilterRegion) baiatFilterRegion.addEventListener('change', e=>{ state.baiatFilterRegion = e.target.value; render(); });
+    const baiatFilterMissionary = document.getElementById('baiatFilterMissionary');
+    if(baiatFilterMissionary) baiatFilterMissionary.addEventListener('change', e=>{ state.baiatFilterMissionary = e.target.value; render(); });
+    const baiatFilterAuxiliary = document.getElementById('baiatFilterAuxiliary');
+    if(baiatFilterAuxiliary) baiatFilterAuxiliary.addEventListener('change', e=>{ state.baiatFilterAuxiliary = e.target.value; render(); });
+    const baiatFilterGender = document.getElementById('baiatFilterGender');
+    if(baiatFilterGender) baiatFilterGender.addEventListener('change', e=>{ state.baiatFilterGender = e.target.value; render(); });
+    const baiatFilterMonth = document.getElementById('baiatFilterMonth');
+    if(baiatFilterMonth) baiatFilterMonth.addEventListener('change', e=>{ state.baiatFilterMonth = e.target.value; render(); });
     root.querySelectorAll('[data-action="removeDaeen"]').forEach(b=> b.addEventListener('click', ()=> removeDaeenAdmin(b.getAttribute('data-id'))));
 
     const addAdminMemberBtn = document.getElementById('addAdminMemberBtn');

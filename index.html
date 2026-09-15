@@ -222,6 +222,7 @@
     addingContact: false,
     editingContactId: null,
     expandedHistoryId: null,
+    expandedBaiatId: null,
     transferringContactId: null,
     addingDaeen: false,
     editingDaeenId: null,
@@ -530,7 +531,7 @@
   };
   function formatBaiatDetails(c){
     const parts = [];
-    if(c.baiatReason) parts.push(c.baiatReason);
+    if(c.notes) parts.push(c.notes);
     const meta = [];
     if(c.baiatAge) meta.push('Age ' + c.baiatAge);
     if(c.baiatCity) meta.push(c.baiatCity);
@@ -1111,7 +1112,6 @@
     const stage = c ? c.stage : 0;
     const lastContact = c ? c.lastContact : todayStr();
     const method = c ? (c.method||'') : '';
-    const baiatReason = c ? (c.baiatReason||'') : '';
     const baiatAge = c ? (c.baiatAge||'') : '';
     const baiatCity = c ? (c.baiatCity||'') : '';
     const baiatFormConfirmed = c ? !!c.baiatFormConfirmed : false;
@@ -1126,7 +1126,7 @@
     let html = '<div class="card">';
     html += '<div class="field"><label>Name</label><input type="text" id="fName" value="' + escapeHtml(name) + '" placeholder="Who are you reaching out to?"></div>';
     html += '<div class="field"><label>Where did you meet them? (optional)</label><input type="text" id="fSource" value="' + escapeHtml(source) + '" placeholder="e.g. mosque event, referral, door-to-door, online"></div>';
-    html += '<div class="field"><label>Context / notes</label><textarea id="fNotes" placeholder="Where you met, family, interests, prayer requests…">' + escapeHtml(notes) + '</textarea></div>';
+    html += '<div class="field"><label>Context/Notes</label><textarea id="fNotes" placeholder="Where you met, family, interests, prayer requests…">' + escapeHtml(notes) + '</textarea></div>';
     html += '<div class="row">';
     html += '<div class="field" style="flex:1; min-width:160px;"><label>Stage</label><select id="fStage" onchange="document.getElementById(\'baiatInfoWrap\').style.display = this.value===\'3\' ? \'block\' : \'none\';">';
     for(let i=0;i<4;i++) html += '<option value="' + i + '" ' + (i===stage?'selected':'') + '>' + escapeHtml(state.stageLabels[i]) + '</option>';
@@ -1141,7 +1141,6 @@
     html += '<div class="field"><label>Schedule next follow-up (optional)</label><input type="date" id="fNextFollowUp" value="' + escapeHtml(c?(c.nextFollowUp||''):'') + '"></div>';
     html += '<div id="baiatInfoWrap" style="display:' + (stage===3?'block':'none') + '; background:var(--accent-soft); border-radius:9px; padding:12px; margin-bottom:12px;">';
     html += '<div class="eyebrow" style="margin-bottom:8px;">Bai\u2019at details</div>';
-    html += '<div class="field"><label>Reason for Bai\u2019at</label><textarea id="fBaiatReason" placeholder="What led to this decision?">' + escapeHtml(baiatReason) + '</textarea></div>';
     html += '<div class="row">';
     html += '<div class="field" style="flex:1; min-width:100px;"><label>Age</label><input type="number" id="fBaiatAge" value="' + escapeHtml(baiatAge) + '" min="0" oninput="window.__updateAuxPreview()"></div>';
     html += '<div class="field" style="flex:2; min-width:160px;"><label>City</label><input type="text" id="fBaiatCity" value="' + escapeHtml(baiatCity) + '"></div>';
@@ -1152,7 +1151,7 @@
     html += '<option value="Yes" ' + (baiatMetInPerson==='Yes'?'selected':'') + '>Yes</option>';
     html += '<option value="No" ' + (baiatMetInPerson==='No'?'selected':'') + '>No</option>';
     html += '</select></div>';
-    const faithOptions = ['Practicing Christian','Muslim','Hindu','Sikh','Jewish','Non-Religious','Other'];
+    const faithOptions = ['Christian','Muslim','Hindu','Sikh','Jewish','Non-Religious','Other'];
     html += '<div class="row">';
     html += '<div class="field" style="flex:1; min-width:180px;"><label>Faith at time of Bai\u2019at</label><select id="fBaiatFaithAtBaiat"><option value="">Not specified</option>';
     faithOptions.forEach(o=> html += '<option value="' + escapeHtml(o) + '" ' + (baiatFaithAtBaiat===o?'selected':'') + '>' + escapeHtml(o) + '</option>');
@@ -1175,7 +1174,7 @@
     const auxNow = computeAuxiliary(baiatAge, baiatGender);
     html += '<div class="muted" id="auxPreview" style="margin-bottom:11px; font-weight:700;">' + (auxNow?('Auxiliary: ' + auxNow):'') + '</div>';
     html += '<div class="field"><label>What motivated them to learn about Islam?</label><input type="text" id="fBaiatMotivation" value="' + escapeHtml(baiatMotivation) + '" placeholder="e.g. online content, a book, marriage proposal, friend introduced…"></div>';
-    html += '<div class="field" style="margin-bottom:0;"><label>Additional information (optional)</label><textarea id="fBaiatAdditionalInfo" placeholder="Anything else for the record…">' + escapeHtml(baiatAdditionalInfo) + '</textarea></div>';
+    html += '<div class="field" style="margin-bottom:0;"><label>Their journey learning Islam (optional)</label><textarea id="fBaiatAdditionalInfo" placeholder="What did they do to learn? How many times did they visit the mosque? What did they learn about the Promised Messiah (as)?">' + escapeHtml(baiatAdditionalInfo) + '</textarea></div>';
     html += '</div>';
     html += '<div class="form-actions">';
     html += '<button class="primary" data-action="' + editAction + '" data-editid="' + (c?c.id:'') + '">' + (isEdit?'Save changes':'Add contact') + '</button>';
@@ -1226,7 +1225,7 @@
   }
   async function addContact(data){
     const list = state.contactsM[state.me.id] || [];
-    const c = {id: uid(), name:data.name, notes:data.notes, stage:data.stage, lastContact:data.lastContact||todayStr(), method:data.method||'', baiatReason:data.baiatReason||'', baiatAge:data.baiatAge||'', baiatCity:data.baiatCity||'', baiatFormConfirmed:!!data.baiatFormConfirmed, baiatAdditionalInfo:data.baiatAdditionalInfo||'', baiatMetInPerson:data.baiatMetInPerson||'', baiatFaithAtBaiat:data.baiatFaithAtBaiat||'', baiatFaithAtBirth:data.baiatFaithAtBirth||'', baiatGender:data.baiatGender||'', baiatEthnicity:data.baiatEthnicity||'', baiatMotivation:data.baiatMotivation||'', nextFollowUp:data.nextFollowUp||'', source:data.source||'', created:todayStr()};
+    const c = {id: uid(), name:data.name, notes:data.notes, stage:data.stage, lastContact:data.lastContact||todayStr(), method:data.method||'', baiatAge:data.baiatAge||'', baiatCity:data.baiatCity||'', baiatFormConfirmed:!!data.baiatFormConfirmed, baiatAdditionalInfo:data.baiatAdditionalInfo||'', baiatMetInPerson:data.baiatMetInPerson||'', baiatFaithAtBaiat:data.baiatFaithAtBaiat||'', baiatFaithAtBirth:data.baiatFaithAtBirth||'', baiatGender:data.baiatGender||'', baiatEthnicity:data.baiatEthnicity||'', baiatMotivation:data.baiatMotivation||'', nextFollowUp:data.nextFollowUp||'', source:data.source||'', created:todayStr()};
     stampBaiat(c, c.lastContact); stampHistory(c, c.lastContact);
     list.push(c);
     state.contactsM[state.me.id] = list;
@@ -1554,6 +1553,17 @@
           {value: r.personalContacts, label: 'Contacts'},
           {value: r.daeenContacts, label: 'Via Daeen'}
         ]);
+      });
+      html += '</div>';
+    }
+
+    const baiatRows = collectAllBaiats();
+    if(baiatRows.length){
+      html += '<div class="card"><h2>List of Bai\'ats</h2>';
+      html += '<div class="muted" style="margin-bottom:10px;">Every Bai\u2019at across the org — a reminder of what this work is for.</div>';
+      baiatRows.forEach(r=>{
+        const aux = computeAuxiliary(r.age, r.gender);
+        html += '<div class="preview-row"><b>' + escapeHtml(r.contactName) + '</b>' + (r.city?(' \u2014 ' + escapeHtml(r.city)):'') + ' <span class="muted">&middot; introduced by ' + escapeHtml(r.introducedBy) + (r.via?' (Daeen)':' (Missionary)') + (aux?(' &middot; ' + escapeHtml(aux)):'') + '</span></div>';
       });
       html += '</div>';
     }
@@ -1967,6 +1977,36 @@
     });
     render();
   }
+  async function reassignContactAdmin(contactId, sourceType, sourceId, newMissionaryId){
+    if(!newMissionaryId) return;
+    let contact = null;
+    if(sourceType==='m'){
+      const list = state.contactsM[sourceId] || [];
+      const idx = list.findIndex(c=>c.id===contactId);
+      if(idx>-1){ contact = list.splice(idx,1)[0]; }
+      await saveContactsM(sourceId);
+    } else {
+      const list = state.contactsD[sourceId] || [];
+      const idx = list.findIndex(c=>c.id===contactId);
+      if(idx>-1){ contact = list.splice(idx,1)[0]; }
+      await saveContactsD(sourceId);
+    }
+    if(!contact) return;
+    if(!state.contactsM[newMissionaryId]) state.contactsM[newMissionaryId] = [];
+    state.contactsM[newMissionaryId].push(contact);
+    await saveContactsM(newMissionaryId);
+    showToast('Contact moved');
+    render();
+  }
+  async function updateBaiatStatusAdmin(contactId, sourceType, sourceId, newStage){
+    const list = sourceType==='m' ? (state.contactsM[sourceId]||[]) : (state.contactsD[sourceId]||[]);
+    const c = list.find(x=>x.id===contactId);
+    if(!c) return;
+    c.stage = parseInt(newStage);
+    if(sourceType==='m') await saveContactsM(sourceId); else await saveContactsD(sourceId);
+    showToast(c.stage===3 ? 'Status updated' : (c.name + ' removed from Bai\u2019ats list'));
+    render();
+  }
   async function toggleRegionalLeader(id){
     await mutateSharedMissionaries(fresh=>{
       const m = fresh.find(x=>x.id===id);
@@ -2207,14 +2247,14 @@
     for(const m of state.missionaries){
       const region = getMissionaryRegionLabel(m);
       for(const c of (state.contactsM[m.id]||[])){
-        if(c.stage===3 && c.baiatDate) rows.push({missionary:m.name, region, contactName:c.name, baiatDate:c.baiatDate, reason:c.baiatReason||'', age:c.baiatAge||'', city:c.baiatCity||'', formConfirmed:!!c.baiatFormConfirmed, additionalInfo:c.baiatAdditionalInfo||'', metInPerson:c.baiatMetInPerson||'', faithAtBaiat:c.baiatFaithAtBaiat||'', faithAtBirth:c.baiatFaithAtBirth||'', gender:c.baiatGender||'', ethnicity:c.baiatEthnicity||'', motivation:c.baiatMotivation||'', introducedBy:m.name, via:''});
+        if(c.stage===3 && c.baiatDate) rows.push({id:c.id, sourceType:'m', sourceId:m.id, missionary:m.name, region, contactName:c.name, baiatDate:c.baiatDate, reason:c.notes||'', age:c.baiatAge||'', city:c.baiatCity||'', formConfirmed:!!c.baiatFormConfirmed, additionalInfo:c.baiatAdditionalInfo||'', metInPerson:c.baiatMetInPerson||'', faithAtBaiat:c.baiatFaithAtBaiat||'', faithAtBirth:c.baiatFaithAtBirth||'', gender:c.baiatGender||'', ethnicity:c.baiatEthnicity||'', motivation:c.baiatMotivation||'', introducedBy:m.name, via:''});
       }
     }
     for(const d of state.daeenRoster){
       const m = state.missionaries.find(x=>x.id===d.missionaryId);
       const region = m ? getMissionaryRegionLabel(m) : '';
       for(const c of (state.contactsD[d.id]||[])){
-        if(c.stage===3 && c.baiatDate) rows.push({missionary: m?m.name:'(unassigned)', region, contactName:c.name, baiatDate:c.baiatDate, reason:c.baiatReason||'', age:c.baiatAge||'', city:c.baiatCity||'', formConfirmed:!!c.baiatFormConfirmed, additionalInfo:c.baiatAdditionalInfo||'', metInPerson:c.baiatMetInPerson||'', faithAtBaiat:c.baiatFaithAtBaiat||'', faithAtBirth:c.baiatFaithAtBirth||'', gender:c.baiatGender||'', ethnicity:c.baiatEthnicity||'', motivation:c.baiatMotivation||'', introducedBy:d.name, via:d.name});
+        if(c.stage===3 && c.baiatDate) rows.push({id:c.id, sourceType:'d', sourceId:d.id, missionary: m?m.name:'(unassigned)', region, contactName:c.name, baiatDate:c.baiatDate, reason:c.notes||'', age:c.baiatAge||'', city:c.baiatCity||'', formConfirmed:!!c.baiatFormConfirmed, additionalInfo:c.baiatAdditionalInfo||'', metInPerson:c.baiatMetInPerson||'', faithAtBaiat:c.baiatFaithAtBaiat||'', faithAtBirth:c.baiatFaithAtBirth||'', gender:c.baiatGender||'', ethnicity:c.baiatEthnicity||'', motivation:c.baiatMotivation||'', introducedBy:d.name, via:d.name});
       }
     }
     return rows.sort((a,b)=> (b.baiatDate||'').localeCompare(a.baiatDate||''));
@@ -2223,15 +2263,41 @@
   function renderAdminBaiats(){
     const rows = collectAllBaiats();
     let html = '<div class="card"><h2>All Bai\'ats</h2>';
-    html += '<div class="muted" style="margin-bottom:10px;">' + rows.length + ' total. Full names and details — National Access only. Regional Leaders and the National Report only see counts. Scroll right for more columns.</div>';
+    html += '<div class="muted" style="margin-bottom:10px;">' + rows.length + ' total. Full names and details — National Access only. Tap a row for the full record.</div>';
     if(!rows.length) html += '<div class="empty-state">No Bai\'ats recorded yet.</div>';
     else{
-      html += '<div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Date</th><th>Name</th><th>Introduced by</th><th>Region</th><th>Reason</th><th>Age</th><th>Gender</th><th>Auxiliary</th><th>Ethnicity</th><th>City</th><th>Met in person</th><th>Faith at Bai\u2019at</th><th>Faith at birth</th><th>Motivation</th><th>Form</th><th>Additional info</th></tr></thead><tbody>';
       rows.forEach(r=>{
         const aux = computeAuxiliary(r.age, r.gender);
-        html += '<tr><td>' + escapeHtml(r.baiatDate) + '</td><td>' + escapeHtml(r.contactName) + '</td><td>' + escapeHtml(r.introducedBy) + (r.via?' <span class="muted">(Daeen)</span>':' <span class="muted">(Missionary)</span>') + '</td><td>' + escapeHtml(r.region||'—') + '</td><td>' + escapeHtml(r.reason||'—') + '</td><td>' + escapeHtml(String(r.age||'—')) + '</td><td>' + escapeHtml(r.gender||'—') + '</td><td>' + escapeHtml(aux||'—') + '</td><td>' + escapeHtml(r.ethnicity||'—') + '</td><td>' + escapeHtml(r.city||'—') + '</td><td>' + escapeHtml(r.metInPerson||'—') + '</td><td>' + escapeHtml(r.faithAtBaiat||'—') + '</td><td>' + escapeHtml(r.faithAtBirth||'—') + '</td><td>' + escapeHtml(r.motivation||'—') + '</td><td>' + (r.formConfirmed?'<span class="ok-badge">\u2713</span>':'<span class="flag-badge">not yet</span>') + '</td><td>' + escapeHtml(r.additionalInfo||'—') + '</td></tr>';
+        const expanded = state.expandedBaiatId === r.id;
+        html += '<div class="contact-card">';
+        html += '<div class="contact-top" style="cursor:pointer;" data-action="toggleBaiatExpand" data-id="' + r.id + '">';
+        html += '<div><div class="contact-name">' + escapeHtml(r.contactName) + '</div>';
+        html += '<div class="contact-meta">' + escapeHtml(r.baiatDate) + ' &middot; Introduced by ' + escapeHtml(r.introducedBy) + (r.via?' <span class="muted">(Daeen)</span>':' <span class="muted">(Missionary)</span>') + (r.region?(' &middot; ' + escapeHtml(r.region)):'') + '</div></div>';
+        html += (r.formConfirmed?'<span class="ok-badge">Form \u2713</span>':'<span class="flag-badge">Form not yet</span>');
+        html += '</div>';
+        html += '<div class="row" style="margin-top:8px; gap:6px;">';
+        if(r.age) html += '<span style="background:var(--surface-alt); border-radius:6px; padding:3px 9px; font-size:11.5px; font-weight:700;">Age ' + escapeHtml(String(r.age)) + '</span>';
+        if(aux) html += '<span style="background:var(--surface-alt); border-radius:6px; padding:3px 9px; font-size:11.5px; font-weight:700;">' + escapeHtml(aux) + '</span>';
+        if(r.gender) html += '<span style="background:var(--surface-alt); border-radius:6px; padding:3px 9px; font-size:11.5px; font-weight:700;">' + escapeHtml(r.gender) + '</span>';
+        if(r.city) html += '<span style="background:var(--surface-alt); border-radius:6px; padding:3px 9px; font-size:11.5px; font-weight:700;">' + escapeHtml(r.city) + '</span>';
+        if(r.ethnicity) html += '<span style="background:var(--surface-alt); border-radius:6px; padding:3px 9px; font-size:11.5px; font-weight:700;">' + escapeHtml(r.ethnicity) + '</span>';
+        html += '</div>';
+        html += '<button class="small-link" data-action="toggleBaiatExpand" data-id="' + r.id + '" style="margin-top:8px;">' + (expanded?'Hide full record':'View full record') + '</button>';
+        if(expanded){
+          html += '<div class="nested-block">';
+          html += '<div class="field" style="margin-bottom:14px;"><label>Status</label><select data-action="updateBaiatStatus" data-contactid="' + r.id + '" data-sourcetype="' + r.sourceType + '" data-sourceid="' + r.sourceId + '">';
+          for(let i=0;i<4;i++) html += '<option value="' + i + '" ' + (i===3?'selected':'') + '>' + escapeHtml(state.stageLabels[i]) + '</option>';
+          html += '</select><div class="muted" style="margin-top:5px;">Changing this away from Bai\u2019at removes them from this list.</div></div>';
+          html += '<div class="preview-row"><b>Context/Notes:</b> ' + escapeHtml(r.reason||'—') + '</div>';
+          html += '<div class="preview-row"><b>Met in person:</b> ' + escapeHtml(r.metInPerson||'—') + '</div>';
+          html += '<div class="preview-row"><b>Faith at Bai\u2019at:</b> ' + escapeHtml(r.faithAtBaiat||'—') + '</div>';
+          html += '<div class="preview-row"><b>Faith at birth:</b> ' + escapeHtml(r.faithAtBirth||'—') + '</div>';
+          html += '<div class="preview-row"><b>Motivation:</b> ' + escapeHtml(r.motivation||'—') + '</div>';
+          html += '<div class="preview-row"><b>Their journey learning Islam:</b> ' + escapeHtml(r.additionalInfo||'—') + '</div>';
+          html += '</div>';
+        }
+        html += '</div>';
       });
-      html += '</tbody></table></div>';
     }
     html += '</div>';
     return html;
@@ -2261,11 +2327,11 @@
     }
     let rows = [];
     state.missionaries.forEach(m=>{
-      (state.contactsM[m.id]||[]).forEach(c=> rows.push({c, missionary:m.name, via:''}));
+      (state.contactsM[m.id]||[]).forEach(c=> rows.push({c, missionaryId:m.id, missionary:m.name, via:'', sourceType:'m', sourceId:m.id}));
     });
     state.daeenRoster.forEach(d=>{
       const m = state.missionaries.find(x=>x.id===d.missionaryId);
-      (state.contactsD[d.id]||[]).forEach(c=> rows.push({c, missionary: m?m.name:'(unassigned)', via:d.name}));
+      (state.contactsD[d.id]||[]).forEach(c=> rows.push({c, missionaryId: m?m.id:'', missionary: m?m.name:'(unassigned)', via:d.name, sourceType:'d', sourceId:d.id}));
     });
     if(state.contactsFilterNotEngaged) rows = rows.filter(r=>!engagedThisWk(r.c));
     if(state.contactsFilterStage !== '' && state.contactsFilterStage !== undefined && state.contactsFilterStage !== null){
@@ -2280,7 +2346,7 @@
     });
 
     let html = '<div class="card"><h2>All Contacts (' + rows.length + ')</h2>';
-    html += '<div class="muted" style="margin-bottom:10px;">Every contact, personal or via a Daeen, across the whole org — for reviewing who needs to move to the next stage.</div>';
+    html += '<div class="muted" style="margin-bottom:10px;">Every contact, personal or via a Daeen, across the whole org — for reviewing who needs to move to the next stage. Change the Missionary dropdown to move a contact.</div>';
     html += '<div class="row" style="gap:16px; margin-bottom:10px; align-items:center;">';
     html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="contactsFilterNotEngaged" ' + (state.contactsFilterNotEngaged?'checked':'') + '> not contacted this week only</label>';
     html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">Stage: <select id="contactsFilterStage"><option value="">All</option>';
@@ -2290,10 +2356,15 @@
     html += '<div class="search-box"><input type="text" id="allContactsAdminSearch" placeholder="Search contacts…" value="' + escapeHtml(state.searchText) + '"></div>';
     if(!rows.length) html += '<div class="empty-state">No contacts match.</div>';
     else{
-      html += '<table class="admin-table"><thead><tr><th>Name</th><th>Stage</th><th>Connected to</th><th>This week</th></tr></thead><tbody>';
+      html += '<table class="admin-table"><thead><tr><th>Name</th><th>Stage</th><th>Missionary</th><th>Via Daeen</th><th>This week</th></tr></thead><tbody>';
       rows.slice(0,200).forEach(r=>{
         const engaged = engagedThisWk(r.c);
-        html += '<tr><td>' + escapeHtml(r.c.name) + '</td><td>' + escapeHtml(state.stageLabels[r.c.stage]) + '</td><td>' + escapeHtml(r.missionary) + (r.via?(' <span class="muted">(via ' + escapeHtml(r.via) + ')</span>'):'') + '</td><td>' + (engaged?'<span class="ok-badge">contacted</span>':'<span class="flag-badge">not yet</span>') + '</td></tr>';
+        html += '<tr><td>' + escapeHtml(r.c.name) + '</td><td>' + escapeHtml(state.stageLabels[r.c.stage]) + '</td>';
+        html += '<td><select data-action="reassignContactAdmin" data-contactid="' + r.c.id + '" data-sourcetype="' + r.sourceType + '" data-sourceid="' + r.sourceId + '"><option value="">unassigned</option>';
+        state.missionaries.forEach(m=> html += '<option value="' + m.id + '" ' + (m.id===r.missionaryId?'selected':'') + '>' + escapeHtml(m.name) + '</option>');
+        html += '</select></td>';
+        html += '<td>' + (r.via?escapeHtml(r.via):'<span class="muted">—</span>') + '</td>';
+        html += '<td>' + (engaged?'<span class="ok-badge">contacted</span>':'<span class="flag-badge">not yet</span>') + '</td></tr>';
       });
       html += '</tbody></table>';
       if(rows.length>200) html += '<div class="muted" style="margin-top:8px;">Showing the first 200 of ' + rows.length + ' — narrow with search or filters to find specific ones.</div>';
@@ -2437,7 +2508,6 @@
         const stage = parseInt(document.getElementById('fStage').value);
         const lastContact = document.getElementById('fDate').value || todayStr();
         const method = document.getElementById('fMethod').value;
-        const baiatReason = document.getElementById('fBaiatReason').value.trim();
         const baiatAge = document.getElementById('fBaiatAge').value;
         const baiatCity = document.getElementById('fBaiatCity').value.trim();
         const baiatFormConfirmed = document.getElementById('fBaiatFormConfirmed').checked;
@@ -2453,13 +2523,18 @@
         if(!name){ alert('Please enter a name.'); return; }
         b.disabled = true; b.textContent = 'Saving\u2026';
         const editId = b.getAttribute('data-editid');
-        const payload = {name,notes,stage,lastContact,method,baiatReason,baiatAge,baiatCity,baiatFormConfirmed,baiatAdditionalInfo,baiatMetInPerson,baiatFaithAtBaiat,baiatFaithAtBirth,baiatGender,baiatEthnicity,baiatMotivation,nextFollowUp,source};
+        const payload = {name,notes,stage,lastContact,method,baiatAge,baiatCity,baiatFormConfirmed,baiatAdditionalInfo,baiatMetInPerson,baiatFaithAtBaiat,baiatFaithAtBirth,baiatGender,baiatEthnicity,baiatMotivation,nextFollowUp,source};
         if(editId) updateContact(editId, payload); else addContact(payload);
       });
     });
     root.querySelectorAll('[data-action="toggleHistory"]').forEach(b=> b.addEventListener('click', ()=>{
       const id = b.getAttribute('data-id');
       state.expandedHistoryId = state.expandedHistoryId===id ? null : id;
+      render();
+    }));
+    root.querySelectorAll('[data-action="toggleBaiatExpand"]').forEach(b=> b.addEventListener('click', ()=>{
+      const id = b.getAttribute('data-id');
+      state.expandedBaiatId = state.expandedBaiatId===id ? null : id;
       render();
     }));
     root.querySelectorAll('[data-action="startTransfer"]').forEach(b=> b.addEventListener('click', ()=>{
@@ -2544,7 +2619,6 @@
         const stage = parseInt(document.getElementById('fStage').value);
         const lastContact = document.getElementById('fDate').value || todayStr();
         const method = document.getElementById('fMethod').value;
-        const baiatReason = document.getElementById('fBaiatReason').value.trim();
         const baiatAge = document.getElementById('fBaiatAge').value;
         const baiatCity = document.getElementById('fBaiatCity').value.trim();
         const baiatFormConfirmed = document.getElementById('fBaiatFormConfirmed').checked;
@@ -2561,7 +2635,7 @@
         b.disabled = true; b.textContent = 'Saving\u2026';
         const editId = b.getAttribute('data-editid');
         const list = state.contactsD[daeenId] || (state.contactsD[daeenId]=[]);
-        const fields = {name,notes,stage,lastContact,method,baiatReason,baiatAge,baiatCity,baiatFormConfirmed,baiatAdditionalInfo,baiatMetInPerson,baiatFaithAtBaiat,baiatFaithAtBirth,baiatGender,baiatEthnicity,baiatMotivation,nextFollowUp,source};
+        const fields = {name,notes,stage,lastContact,method,baiatAge,baiatCity,baiatFormConfirmed,baiatAdditionalInfo,baiatMetInPerson,baiatFaithAtBaiat,baiatFaithAtBirth,baiatGender,baiatEthnicity,baiatMotivation,nextFollowUp,source};
         if(editId){
           const c = list.find(x=>x.id===editId);
           if(c){ Object.assign(c, fields); stampBaiat(c, lastContact); stampHistory(c, lastContact); }
@@ -2622,6 +2696,13 @@
     const adminDaeenSearch = document.getElementById('adminDaeenSearch');
     if(adminDaeenSearch) adminDaeenSearch.addEventListener('input', e=>{ state.searchText = e.target.value; render(); });
     root.querySelectorAll('[data-action="reassign"]').forEach(sel=> sel.addEventListener('change', e=>{ reassignDaeen(sel.getAttribute('data-id'), e.target.value); }));
+    root.querySelectorAll('[data-action="reassignContactAdmin"]').forEach(sel=> sel.addEventListener('change', e=>{
+      reassignContactAdmin(sel.getAttribute('data-contactid'), sel.getAttribute('data-sourcetype'), sel.getAttribute('data-sourceid'), e.target.value);
+    }));
+    root.querySelectorAll('[data-action="updateBaiatStatus"]').forEach(sel=> sel.addEventListener('change', e=>{
+      if(!confirm('Change this person\u2019s stage? If moved away from Bai\u2019at, they\u2019ll disappear from this list.')){ render(); return; }
+      updateBaiatStatusAdmin(sel.getAttribute('data-contactid'), sel.getAttribute('data-sourcetype'), sel.getAttribute('data-sourceid'), e.target.value);
+    }));
     root.querySelectorAll('[data-action="removeDaeen"]').forEach(b=> b.addEventListener('click', ()=> removeDaeenAdmin(b.getAttribute('data-id'))));
 
     const addAdminMemberBtn = document.getElementById('addAdminMemberBtn');

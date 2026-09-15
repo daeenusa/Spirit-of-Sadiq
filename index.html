@@ -507,12 +507,35 @@
     return (contactsArray||[]).filter(c=>c.stage===3 && c.baiatDate).map(c=>c.baiatDate);
   }
 
+  function computeAuxiliary(age, gender){
+    const a = parseInt(age);
+    if(!a || !gender) return '';
+    if(gender==='Male'){
+      if(a>=7 && a<=14) return 'Atfal';
+      if(a>=15 && a<=40) return 'Khuddam';
+      if(a>40) return 'Ansar';
+    } else if(gender==='Female'){
+      if(a>=7 && a<=14) return 'Nasirat';
+      if(a>=15) return 'Lajna';
+    }
+    return '';
+  }
+  window.__updateAuxPreview = function(){
+    const ageEl = document.getElementById('fBaiatAge');
+    const genderEl = document.getElementById('fBaiatGender');
+    const preview = document.getElementById('auxPreview');
+    if(!ageEl || !genderEl || !preview) return;
+    const aux = computeAuxiliary(ageEl.value, genderEl.value);
+    preview.textContent = aux ? ('Auxiliary: ' + aux) : '';
+  };
   function formatBaiatDetails(c){
     const parts = [];
     if(c.baiatReason) parts.push(c.baiatReason);
     const meta = [];
     if(c.baiatAge) meta.push('Age ' + c.baiatAge);
     if(c.baiatCity) meta.push(c.baiatCity);
+    const aux = computeAuxiliary(c.baiatAge, c.baiatGender);
+    if(aux) meta.push(aux);
     meta.push(c.baiatFormConfirmed ? 'Form confirmed \u2713' : 'Form NOT yet confirmed');
     parts.push(meta.join(' \u00b7 '));
     if(c.baiatAdditionalInfo) parts.push(c.baiatAdditionalInfo);
@@ -1093,6 +1116,12 @@
     const baiatCity = c ? (c.baiatCity||'') : '';
     const baiatFormConfirmed = c ? !!c.baiatFormConfirmed : false;
     const baiatAdditionalInfo = c ? (c.baiatAdditionalInfo||'') : '';
+    const baiatMetInPerson = c ? (c.baiatMetInPerson||'') : '';
+    const baiatFaithAtBaiat = c ? (c.baiatFaithAtBaiat||'') : '';
+    const baiatFaithAtBirth = c ? (c.baiatFaithAtBirth||'') : '';
+    const baiatGender = c ? (c.baiatGender||'') : '';
+    const baiatEthnicity = c ? (c.baiatEthnicity||'') : '';
+    const baiatMotivation = c ? (c.baiatMotivation||'') : '';
     const source = c ? (c.source||'') : '';
     let html = '<div class="card">';
     html += '<div class="field"><label>Name</label><input type="text" id="fName" value="' + escapeHtml(name) + '" placeholder="Who are you reaching out to?"></div>';
@@ -1114,10 +1143,38 @@
     html += '<div class="eyebrow" style="margin-bottom:8px;">Bai\u2019at details</div>';
     html += '<div class="field"><label>Reason for Bai\u2019at</label><textarea id="fBaiatReason" placeholder="What led to this decision?">' + escapeHtml(baiatReason) + '</textarea></div>';
     html += '<div class="row">';
-    html += '<div class="field" style="flex:1; min-width:100px;"><label>Age</label><input type="number" id="fBaiatAge" value="' + escapeHtml(baiatAge) + '" min="0"></div>';
+    html += '<div class="field" style="flex:1; min-width:100px;"><label>Age</label><input type="number" id="fBaiatAge" value="' + escapeHtml(baiatAge) + '" min="0" oninput="window.__updateAuxPreview()"></div>';
     html += '<div class="field" style="flex:2; min-width:160px;"><label>City</label><input type="text" id="fBaiatCity" value="' + escapeHtml(baiatCity) + '"></div>';
     html += '</div>';
     html += '<label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:11px; cursor:pointer;"><input type="checkbox" id="fBaiatFormConfirmed" ' + (baiatFormConfirmed?'checked':'') + '> Online Bai\u2019at form has been filled out</label>';
+    html += '<div class="field"><label>Have you met them in person?</label><select id="fBaiatMetInPerson">';
+    html += '<option value="" ' + (baiatMetInPerson===''?'selected':'') + '>Not specified</option>';
+    html += '<option value="Yes" ' + (baiatMetInPerson==='Yes'?'selected':'') + '>Yes</option>';
+    html += '<option value="No" ' + (baiatMetInPerson==='No'?'selected':'') + '>No</option>';
+    html += '</select></div>';
+    const faithOptions = ['Practicing Christian','Muslim','Hindu','Sikh','Jewish','Non-Religious','Other'];
+    html += '<div class="row">';
+    html += '<div class="field" style="flex:1; min-width:180px;"><label>Faith at time of Bai\u2019at</label><select id="fBaiatFaithAtBaiat"><option value="">Not specified</option>';
+    faithOptions.forEach(o=> html += '<option value="' + escapeHtml(o) + '" ' + (baiatFaithAtBaiat===o?'selected':'') + '>' + escapeHtml(o) + '</option>');
+    html += '</select></div>';
+    html += '<div class="field" style="flex:1; min-width:180px;"><label>Faith at birth</label><select id="fBaiatFaithAtBirth"><option value="">Not specified</option>';
+    faithOptions.forEach(o=> html += '<option value="' + escapeHtml(o) + '" ' + (baiatFaithAtBirth===o?'selected':'') + '>' + escapeHtml(o) + '</option>');
+    html += '</select></div>';
+    html += '</div>';
+    html += '<div class="row">';
+    html += '<div class="field" style="flex:1; min-width:140px;"><label>Gender</label><select id="fBaiatGender" onchange="window.__updateAuxPreview()">';
+    html += '<option value="" ' + (baiatGender===''?'selected':'') + '>Not specified</option>';
+    html += '<option value="Male" ' + (baiatGender==='Male'?'selected':'') + '>Male</option>';
+    html += '<option value="Female" ' + (baiatGender==='Female'?'selected':'') + '>Female</option>';
+    html += '</select></div>';
+    const ethnicityOptions = ['Pakistani','African American','Caucasian','Latin','Asian','Native American','Other'];
+    html += '<div class="field" style="flex:1; min-width:180px;"><label>Ethnic background</label><select id="fBaiatEthnicity"><option value="">Not specified</option>';
+    ethnicityOptions.forEach(o=> html += '<option value="' + escapeHtml(o) + '" ' + (baiatEthnicity===o?'selected':'') + '>' + escapeHtml(o) + '</option>');
+    html += '</select></div>';
+    html += '</div>';
+    const auxNow = computeAuxiliary(baiatAge, baiatGender);
+    html += '<div class="muted" id="auxPreview" style="margin-bottom:11px; font-weight:700;">' + (auxNow?('Auxiliary: ' + auxNow):'') + '</div>';
+    html += '<div class="field"><label>What motivated them to learn about Islam?</label><input type="text" id="fBaiatMotivation" value="' + escapeHtml(baiatMotivation) + '" placeholder="e.g. online content, a book, marriage proposal, friend introduced…"></div>';
     html += '<div class="field" style="margin-bottom:0;"><label>Additional information (optional)</label><textarea id="fBaiatAdditionalInfo" placeholder="Anything else for the record…">' + escapeHtml(baiatAdditionalInfo) + '</textarea></div>';
     html += '</div>';
     html += '<div class="form-actions">';
@@ -1169,7 +1226,7 @@
   }
   async function addContact(data){
     const list = state.contactsM[state.me.id] || [];
-    const c = {id: uid(), name:data.name, notes:data.notes, stage:data.stage, lastContact:data.lastContact||todayStr(), method:data.method||'', baiatReason:data.baiatReason||'', baiatAge:data.baiatAge||'', baiatCity:data.baiatCity||'', baiatFormConfirmed:!!data.baiatFormConfirmed, baiatAdditionalInfo:data.baiatAdditionalInfo||'', nextFollowUp:data.nextFollowUp||'', source:data.source||'', created:todayStr()};
+    const c = {id: uid(), name:data.name, notes:data.notes, stage:data.stage, lastContact:data.lastContact||todayStr(), method:data.method||'', baiatReason:data.baiatReason||'', baiatAge:data.baiatAge||'', baiatCity:data.baiatCity||'', baiatFormConfirmed:!!data.baiatFormConfirmed, baiatAdditionalInfo:data.baiatAdditionalInfo||'', baiatMetInPerson:data.baiatMetInPerson||'', baiatFaithAtBaiat:data.baiatFaithAtBaiat||'', baiatFaithAtBirth:data.baiatFaithAtBirth||'', baiatGender:data.baiatGender||'', baiatEthnicity:data.baiatEthnicity||'', baiatMotivation:data.baiatMotivation||'', nextFollowUp:data.nextFollowUp||'', source:data.source||'', created:todayStr()};
     stampBaiat(c, c.lastContact); stampHistory(c, c.lastContact);
     list.push(c);
     state.contactsM[state.me.id] = list;
@@ -2150,14 +2207,14 @@
     for(const m of state.missionaries){
       const region = getMissionaryRegionLabel(m);
       for(const c of (state.contactsM[m.id]||[])){
-        if(c.stage===3 && c.baiatDate) rows.push({missionary:m.name, region, contactName:c.name, baiatDate:c.baiatDate, reason:c.baiatReason||'', age:c.baiatAge||'', city:c.baiatCity||'', formConfirmed:!!c.baiatFormConfirmed, additionalInfo:c.baiatAdditionalInfo||'', via:''});
+        if(c.stage===3 && c.baiatDate) rows.push({missionary:m.name, region, contactName:c.name, baiatDate:c.baiatDate, reason:c.baiatReason||'', age:c.baiatAge||'', city:c.baiatCity||'', formConfirmed:!!c.baiatFormConfirmed, additionalInfo:c.baiatAdditionalInfo||'', metInPerson:c.baiatMetInPerson||'', faithAtBaiat:c.baiatFaithAtBaiat||'', faithAtBirth:c.baiatFaithAtBirth||'', gender:c.baiatGender||'', ethnicity:c.baiatEthnicity||'', motivation:c.baiatMotivation||'', introducedBy:m.name, via:''});
       }
     }
     for(const d of state.daeenRoster){
       const m = state.missionaries.find(x=>x.id===d.missionaryId);
       const region = m ? getMissionaryRegionLabel(m) : '';
       for(const c of (state.contactsD[d.id]||[])){
-        if(c.stage===3 && c.baiatDate) rows.push({missionary: m?m.name:'(unassigned)', region, contactName:c.name, baiatDate:c.baiatDate, reason:c.baiatReason||'', age:c.baiatAge||'', city:c.baiatCity||'', formConfirmed:!!c.baiatFormConfirmed, additionalInfo:c.baiatAdditionalInfo||'', via:d.name});
+        if(c.stage===3 && c.baiatDate) rows.push({missionary: m?m.name:'(unassigned)', region, contactName:c.name, baiatDate:c.baiatDate, reason:c.baiatReason||'', age:c.baiatAge||'', city:c.baiatCity||'', formConfirmed:!!c.baiatFormConfirmed, additionalInfo:c.baiatAdditionalInfo||'', metInPerson:c.baiatMetInPerson||'', faithAtBaiat:c.baiatFaithAtBaiat||'', faithAtBirth:c.baiatFaithAtBirth||'', gender:c.baiatGender||'', ethnicity:c.baiatEthnicity||'', motivation:c.baiatMotivation||'', introducedBy:d.name, via:d.name});
       }
     }
     return rows.sort((a,b)=> (b.baiatDate||'').localeCompare(a.baiatDate||''));
@@ -2166,14 +2223,15 @@
   function renderAdminBaiats(){
     const rows = collectAllBaiats();
     let html = '<div class="card"><h2>All Bai\'ats</h2>';
-    html += '<div class="muted" style="margin-bottom:10px;">' + rows.length + ' total. Full names and details — National Access only. Regional Leaders and the National Report only see counts.</div>';
+    html += '<div class="muted" style="margin-bottom:10px;">' + rows.length + ' total. Full names and details — National Access only. Regional Leaders and the National Report only see counts. Scroll right for more columns.</div>';
     if(!rows.length) html += '<div class="empty-state">No Bai\'ats recorded yet.</div>';
     else{
-      html += '<table class="admin-table"><thead><tr><th>Date</th><th>Name</th><th>Missionary</th><th>Region</th><th>Reason</th><th>Age</th><th>City</th><th>Form</th><th>Additional info</th></tr></thead><tbody>';
+      html += '<div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Date</th><th>Name</th><th>Introduced by</th><th>Region</th><th>Reason</th><th>Age</th><th>Gender</th><th>Auxiliary</th><th>Ethnicity</th><th>City</th><th>Met in person</th><th>Faith at Bai\u2019at</th><th>Faith at birth</th><th>Motivation</th><th>Form</th><th>Additional info</th></tr></thead><tbody>';
       rows.forEach(r=>{
-        html += '<tr><td>' + escapeHtml(r.baiatDate) + '</td><td>' + escapeHtml(r.contactName) + '</td><td>' + escapeHtml(r.missionary) + (r.via?(' <span class="muted">(via ' + escapeHtml(r.via) + ')</span>'):'') + '</td><td>' + escapeHtml(r.region||'—') + '</td><td>' + escapeHtml(r.reason||'—') + '</td><td>' + escapeHtml(String(r.age||'—')) + '</td><td>' + escapeHtml(r.city||'—') + '</td><td>' + (r.formConfirmed?'<span class="ok-badge">\u2713</span>':'<span class="flag-badge">not yet</span>') + '</td><td>' + escapeHtml(r.additionalInfo||'—') + '</td></tr>';
+        const aux = computeAuxiliary(r.age, r.gender);
+        html += '<tr><td>' + escapeHtml(r.baiatDate) + '</td><td>' + escapeHtml(r.contactName) + '</td><td>' + escapeHtml(r.introducedBy) + (r.via?' <span class="muted">(Daeen)</span>':' <span class="muted">(Missionary)</span>') + '</td><td>' + escapeHtml(r.region||'—') + '</td><td>' + escapeHtml(r.reason||'—') + '</td><td>' + escapeHtml(String(r.age||'—')) + '</td><td>' + escapeHtml(r.gender||'—') + '</td><td>' + escapeHtml(aux||'—') + '</td><td>' + escapeHtml(r.ethnicity||'—') + '</td><td>' + escapeHtml(r.city||'—') + '</td><td>' + escapeHtml(r.metInPerson||'—') + '</td><td>' + escapeHtml(r.faithAtBaiat||'—') + '</td><td>' + escapeHtml(r.faithAtBirth||'—') + '</td><td>' + escapeHtml(r.motivation||'—') + '</td><td>' + (r.formConfirmed?'<span class="ok-badge">\u2713</span>':'<span class="flag-badge">not yet</span>') + '</td><td>' + escapeHtml(r.additionalInfo||'—') + '</td></tr>';
       });
-      html += '</tbody></table>';
+      html += '</tbody></table></div>';
     }
     html += '</div>';
     return html;
@@ -2384,12 +2442,18 @@
         const baiatCity = document.getElementById('fBaiatCity').value.trim();
         const baiatFormConfirmed = document.getElementById('fBaiatFormConfirmed').checked;
         const baiatAdditionalInfo = document.getElementById('fBaiatAdditionalInfo').value.trim();
+        const baiatMetInPerson = document.getElementById('fBaiatMetInPerson').value;
+        const baiatFaithAtBaiat = document.getElementById('fBaiatFaithAtBaiat').value;
+        const baiatFaithAtBirth = document.getElementById('fBaiatFaithAtBirth').value;
+        const baiatGender = document.getElementById('fBaiatGender').value;
+        const baiatEthnicity = document.getElementById('fBaiatEthnicity').value;
+        const baiatMotivation = document.getElementById('fBaiatMotivation').value.trim();
         const nextFollowUp = document.getElementById('fNextFollowUp').value;
         const source = document.getElementById('fSource').value.trim();
         if(!name){ alert('Please enter a name.'); return; }
         b.disabled = true; b.textContent = 'Saving\u2026';
         const editId = b.getAttribute('data-editid');
-        const payload = {name,notes,stage,lastContact,method,baiatReason,baiatAge,baiatCity,baiatFormConfirmed,baiatAdditionalInfo,nextFollowUp,source};
+        const payload = {name,notes,stage,lastContact,method,baiatReason,baiatAge,baiatCity,baiatFormConfirmed,baiatAdditionalInfo,baiatMetInPerson,baiatFaithAtBaiat,baiatFaithAtBirth,baiatGender,baiatEthnicity,baiatMotivation,nextFollowUp,source};
         if(editId) updateContact(editId, payload); else addContact(payload);
       });
     });
@@ -2485,13 +2549,19 @@
         const baiatCity = document.getElementById('fBaiatCity').value.trim();
         const baiatFormConfirmed = document.getElementById('fBaiatFormConfirmed').checked;
         const baiatAdditionalInfo = document.getElementById('fBaiatAdditionalInfo').value.trim();
+        const baiatMetInPerson = document.getElementById('fBaiatMetInPerson').value;
+        const baiatFaithAtBaiat = document.getElementById('fBaiatFaithAtBaiat').value;
+        const baiatFaithAtBirth = document.getElementById('fBaiatFaithAtBirth').value;
+        const baiatGender = document.getElementById('fBaiatGender').value;
+        const baiatEthnicity = document.getElementById('fBaiatEthnicity').value;
+        const baiatMotivation = document.getElementById('fBaiatMotivation').value.trim();
         const nextFollowUp = document.getElementById('fNextFollowUp').value;
         const source = document.getElementById('fSource').value.trim();
         if(!name){ alert('Please enter a name.'); return; }
         b.disabled = true; b.textContent = 'Saving\u2026';
         const editId = b.getAttribute('data-editid');
         const list = state.contactsD[daeenId] || (state.contactsD[daeenId]=[]);
-        const fields = {name,notes,stage,lastContact,method,baiatReason,baiatAge,baiatCity,baiatFormConfirmed,baiatAdditionalInfo,nextFollowUp,source};
+        const fields = {name,notes,stage,lastContact,method,baiatReason,baiatAge,baiatCity,baiatFormConfirmed,baiatAdditionalInfo,baiatMetInPerson,baiatFaithAtBaiat,baiatFaithAtBirth,baiatGender,baiatEthnicity,baiatMotivation,nextFollowUp,source};
         if(editId){
           const c = list.find(x=>x.id===editId);
           if(c){ Object.assign(c, fields); stampBaiat(c, lastContact); stampHistory(c, lastContact); }

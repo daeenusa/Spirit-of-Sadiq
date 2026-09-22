@@ -1508,6 +1508,9 @@
       html += '<button class="ghost" data-action="engage" data-method="in_person" data-id="' + d.id + '">In person</button>';
       html += '<button class="ghost" data-action="engage" data-method="phone" data-id="' + d.id + '">By phone</button>';
       html += '</div>';
+      html += '<div class="eyebrow" style="margin-top:4px; margin-bottom:7px;">Daeen Training Log (Optional)</div>';
+      const trainedThisWeek = d.lastTrainedDate && d.lastTrainedDate >= periodStartISO('week');
+      html += '<label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:12px; cursor:pointer;"><input type="checkbox" data-action="toggleTrained" data-id="' + d.id + '" ' + (trainedThisWeek?'checked':'') + '> Trained / attended class / personally trained this week</label>';
       html += '<div class="contact-actions">';
       html += '<button class="small-link" data-action="editdaeen" data-id="' + d.id + '">Edit</button>';
       html += '<button class="danger-link" data-action="deletedaeen" data-id="' + d.id + '">Remove</button>';
@@ -1753,11 +1756,13 @@
 
   // ---------- Shared report (missionary + admin) ----------
 
-  function renderGoalsAndGroups(){
+  function renderGoalsAndGroups(periodMode){
+    const isWeek = periodMode !== 'month';
+    const goalMissionaries = isWeek ? assignedMissionaries() : state.missionaries;
     let html = '';
 
     // ----- Missionary Bai'at goals (overall summary only — detail now nested by region below) -----
-    const withGoals = state.missionaries.map(m=>({m, ytd: baiatsYTDForMissionary(m.id), goal: m.target||10}));
+    const withGoals = goalMissionaries.map(m=>({m, ytd: baiatsYTDForMissionary(m.id), goal: m.target||10}));
     const metGoal = withGoals.filter(x=>x.ytd >= x.goal).length;
     const sumYtd = withGoals.reduce((s,x)=>s+x.ytd,0);
     const sumGoal = withGoals.reduce((s,x)=>s+x.goal,0);
@@ -1815,32 +1820,69 @@
         html += '</tbody></table></div>';
         html += '</div>';
       });
+      if(!isWeek){
+        const coveredIds = new Set();
+        leaders.forEach(rl=> state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id).forEach(m=>coveredIds.add(m.id)));
+        const unassignedTeam = state.missionaries.filter(m=>!coveredIds.has(m.id));
+        if(unassignedTeam.length){
+          const uYtd = unassignedTeam.reduce((s,m)=>s+baiatsYTDForMissionary(m.id),0);
+          const uGoal = unassignedTeam.reduce((s,m)=>s+(m.target||10),0);
+          html += '<div class="nested-block" style="margin-top:14px; padding-top:14px;">';
+          html += progressBarHtml(uYtd, uGoal, 'Unassigned (' + unassignedTeam.length + ' missionaries)');
+          html += '<div style="overflow-x:auto; margin-top:8px;"><table class="admin-table" style="font-size:11.5px;"><thead><tr><th>Missionary</th>';
+          months.forEach(mo=> html += '<th style="text-align:center;">' + formatMonthLabel(mo) + '</th>');
+          html += '<th style="text-align:center;">YTD / Goal</th></tr></thead><tbody>';
+          unassignedTeam.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(m=>{
+            const mYtd = baiatsYTDForMissionary(m.id), mGoal = m.target||10;
+            const met = mYtd >= mGoal;
+            html += '<tr><td>' + escapeHtml(m.name) + '</td>';
+            months.forEach(mo=>{
+              const count = baiatsInMonthForMissionary(m.id, mo);
+              html += '<td style="text-align:center; ' + (count>0?'color:var(--good); font-weight:700;':'color:var(--text-muted);') + '">' + count + '</td>';
+            });
+            html += '<td style="text-align:center; font-weight:800; color:' + (met?'var(--good)':'var(--text-muted)') + ';">' + mYtd + '/' + mGoal + (met?' \u2713':'') + '</td></tr>';
+          });
+          html += '</tbody></table></div>';
+          html += '</div>';
+        }
+      }
       html += '</div>';
     }
 
     return html;
   }
 
+  function assignedMissionaries(){
+    return state.missionaries.filter(m=>m.isRegionalLeader || m.regionalLeaderId);
+  }
   function renderReport(periodMode){
     const isWeek = periodMode !== 'month';
     const periodStart = isWeek ? periodStartISO('week') : periodStartISO('month');
     const periodWord = isWeek ? 'week' : 'month';
     const periodWordCap = isWeek ? 'Week' : 'Month';
     const reportedFn = isWeek ? hasReportedThisWeek : hasReportedThisMonth;
+    // The weekly report only counts missionaries who are actually assigned to
+    // a region — an unassigned entry usually means setup isn't finished yet,
+    // and including them skews "X of Y reported" numbers. The monthly report
+    // is the org-wide record, so it includes everyone, with anyone unassigned
+    // called out as their own group rather than silently folded in or left out.
+    const reportMissionaries = isWeek ? assignedMissionaries() : state.missionaries;
 
     const stageTotals = [0,0,0,0];
-    let totalContacts=0, totalBaiats=0;
-    for(const m of state.missionaries){
-      for(const c of (state.contactsM[m.id]||[])){ stageTotals[c.stage]++; totalContacts++; if(c.stage===3 && inCurrentMonth(c.baiatDate)) totalBaiats++; }
+    let totalContacts=0, totalBaiats=0, totalPersonalContacts=0, totalDaeenContacts=0;
+    for(const m of reportMissionaries){
+      for(const c of (state.contactsM[m.id]||[])){ stageTotals[c.stage]++; totalContacts++; totalPersonalContacts++; if(c.stage===3 && inCurrentMonth(c.baiatDate)) totalBaiats++; }
     }
-    for(const d of state.daeenRoster){
-      for(const c of (state.contactsD[d.id]||[])){ stageTotals[c.stage]++; totalContacts++; if(c.stage===3 && inCurrentMonth(c.baiatDate)) totalBaiats++; }
+    const reportMissionaryIds = new Set(reportMissionaries.map(m=>m.id));
+    const reportDaeen = state.daeenRoster.filter(d=>reportMissionaryIds.has(d.missionaryId));
+    for(const d of reportDaeen){
+      for(const c of (state.contactsD[d.id]||[])){ stageTotals[c.stage]++; totalContacts++; totalDaeenContacts++; if(c.stage===3 && inCurrentMonth(c.baiatDate)) totalBaiats++; }
     }
     let allContacts = [];
-    for(const m of state.missionaries) allContacts = allContacts.concat(state.contactsM[m.id]||[]);
-    for(const d of state.daeenRoster) allContacts = allContacts.concat(state.contactsD[d.id]||[]);
+    for(const m of reportMissionaries) allContacts = allContacts.concat(state.contactsM[m.id]||[]);
+    for(const d of reportDaeen) allContacts = allContacts.concat(state.contactsD[d.id]||[]);
 
-    const reportedCount = state.missionaries.filter(m=>reportedFn(m.id)).length;
+    const reportedCount = reportMissionaries.filter(m=>reportedFn(m.id)).length;
     const baiatsThisPeriod = allContacts.filter(c=>c.stage===3 && c.baiatDate && c.baiatDate>=periodStart).length;
     const baiatsYearToDate = allContacts.filter(c=>c.stage===3 && inCurrentYear(c.baiatDate)).length;
     const periodEndDate = new Date(periodStart + 'T00:00:00');
@@ -1848,25 +1890,25 @@
     else periodEndDate.setMonth(periodEndDate.getMonth()+1, 0);
 
     const activeContactsCount = allContacts.filter(isContactActive).length;
-    const activeDaeenCount = state.daeenRoster.filter(d=>isDaeenActive(d.id)).length;
+    const activeDaeenCount = reportDaeen.filter(d=>isDaeenActive(d.id)).length;
 
     let html = '<div class="card"><h2>This ' + periodWord + ' vs. year to date</h2>';
     html += '<div class="muted" style="margin-bottom:10px;">Reporting ' + periodWord + ': ' + periodStart + ' through ' + periodEndDate.toISOString().slice(0,10) + (isWeek?' (resets Wednesdays)':'') + '</div>';
     html += '<div class="metric-grid">';
-    html += metricTileColored(reportedCount, state.missionaries.length, 'Missionaries reported this ' + periodWord);
+    html += metricTileColored(reportedCount, reportMissionaries.length, 'Missionaries reported this ' + periodWord);
     html += metricTile(baiatsThisPeriod + ' / ' + baiatsYearToDate, "Bai'ats this " + periodWord + " / year to date");
     html += metricTileColored(activeContactsCount, totalContacts, 'Contacts active');
-    html += metricTileColored(activeDaeenCount, state.daeenRoster.length, 'Daeen active');
+    html += metricTileColored(activeDaeenCount, reportDaeen.length, 'Daeen active');
     html += '</div></div>';
 
     const lastRange = isWeek ? previousWeekRangeISO() : previousMonthRangeISO();
     const baiatsLastPeriod = allContacts.filter(c=>c.stage===3 && c.baiatDate && c.baiatDate>=lastRange.start && c.baiatDate<lastRange.end).length;
     const engagedThisPeriod = allContacts.filter(c=> (c.lastContact && c.lastContact>=periodStart) || (c.history||[]).some(h=>h>=periodStart)).length;
     const engagedLastPeriod = allContacts.filter(c=> (c.history||[]).some(h=>h>=lastRange.start && h<lastRange.end) || (c.lastContact && c.lastContact>=lastRange.start && c.lastContact<lastRange.end)).length;
-    const daeenEngagedThisPeriod = state.daeenRoster.filter(d=> (d.lastEngaged && d.lastEngaged>=periodStart) || (state.contactsD[d.id]||[]).some(c=>(c.history||[]).some(h=>h>=periodStart))).length;
-    const daeenEngagedLastPeriod = state.daeenRoster.filter(d=> (d.lastEngaged && d.lastEngaged>=lastRange.start && d.lastEngaged<lastRange.end) || (state.contactsD[d.id]||[]).some(c=>(c.history||[]).some(h=>h>=lastRange.start && h<lastRange.end))).length;
+    const daeenEngagedThisPeriod = reportDaeen.filter(d=> (d.lastEngaged && d.lastEngaged>=periodStart) || (state.contactsD[d.id]||[]).some(c=>(c.history||[]).some(h=>h>=periodStart))).length;
+    const daeenEngagedLastPeriod = reportDaeen.filter(d=> (d.lastEngaged && d.lastEngaged>=lastRange.start && d.lastEngaged<lastRange.end) || (state.contactsD[d.id]||[]).some(c=>(c.history||[]).some(h=>h>=lastRange.start && h<lastRange.end))).length;
     let daeenOwnedContactsWow = [];
-    state.daeenRoster.forEach(d=> daeenOwnedContactsWow = daeenOwnedContactsWow.concat(state.contactsD[d.id]||[]));
+    reportDaeen.forEach(d=> daeenOwnedContactsWow = daeenOwnedContactsWow.concat(state.contactsD[d.id]||[]));
     const daeenContactsThisPeriod = daeenOwnedContactsWow.filter(c=> (c.lastContact && c.lastContact>=periodStart) || (c.history||[]).some(h=>h>=periodStart)).length;
     const daeenContactsLastPeriod = daeenOwnedContactsWow.filter(c=> (c.history||[]).some(h=>h>=lastRange.start && h<lastRange.end) || (c.lastContact && c.lastContact>=lastRange.start && c.lastContact<lastRange.end)).length;
 
@@ -1879,7 +1921,7 @@
     html += '</div>';
 
     html += '<div class="card"><div class="row-between"><h2>National funnel</h2>' + periodToggleHtml(isWeek?'':'quarterly') + '</div>';
-    html += '<div class="muted" style="margin:6px 0 12px;">' + state.missionaries.length + ' missionaries &middot; ' + state.daeenRoster.length + ' Daeen &middot; ' + totalContacts + ' total contacts &middot; ' + totalBaiats + " Bai'ats this month</div>";
+    html += '<div class="muted" style="margin:6px 0 12px;">' + reportMissionaries.length + ' missionaries &middot; ' + reportDaeen.length + ' Daeen &middot; ' + totalPersonalContacts + ' personal contacts &middot; ' + totalDaeenContacts + ' Daeen contacts &middot; ' + totalBaiats + " Bai'ats this month</div>";
     const maxVal = Math.max(1, ...stageTotals);
     for(let i=0;i<4;i++){
       const w = Math.round(stageTotals[i]/maxVal*100);
@@ -1922,9 +1964,27 @@
       });
       html += '</div>';
     });
+    if(!isWeek){
+      const coveredIds = new Set();
+      reportRegionLeaders.forEach(rl=> state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id).forEach(m=>coveredIds.add(m.id)));
+      const unassignedTeam = state.missionaries.filter(m=>!coveredIds.has(m.id));
+      if(unassignedTeam.length){
+        html += '<div class="nested-block" style="margin-top:16px; padding-top:16px;">';
+        html += '<div class="row-between"><div class="name" style="font-size:16px;">Unassigned</div><div class="muted">' + unassignedTeam.length + ' missionaries</div></div>';
+        unassignedTeam.slice().sort((a,b)=> (reportedFn(a.id)?1:0) - (reportedFn(b.id)?1:0)).forEach(m=>{
+          const met = computeMetricsForPeriod(m.id, periodStart);
+          const reported = reportedFn(m.id);
+          html += '<div class="row-between" style="padding:7px 10px; margin-top:8px; margin-bottom:4px; border-radius:7px; ' + (reported?'':'background:var(--warn-soft);') + '">';
+          html += '<div style="font-weight:600; font-size:13px;">' + escapeHtml(m.name) + '</div>';
+          html += '<div class="muted" style="font-size:11.5px; text-align:right;">Daeen ' + met.daeenReachedOut + '/' + met.daeenTotal + ' &middot; Contacts ' + met.personalReachedOut + '/' + met.personalContactsTotal + ' &middot; Via Daeen ' + met.tablighReachedOut + '/' + met.tablighTotal + ' &middot; ' + met.baiats + " Bai'ats" + (reported?'':' <b style="color:var(--warn);">— not reported</b>') + '</div>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+    }
     html += '</div>';
 
-    html += renderGoalsAndGroups();
+    html += renderGoalsAndGroups(periodMode);
 
     html += '<div class="card" id="summaryCard" style="display:none;"><h2>Report text</h2><div class="muted">Copy this into your group chat for the ' + periodWord + 'ly review.</div><div class="summary-box" id="summaryText"></div></div>';
     return html;
@@ -2423,12 +2483,14 @@
         const expandBtn = '<button class="ghost" data-action="toggleBaiatExpand" data-id="' + r.id + '" style="padding:3px 11px; font-size:14px; line-height:1; font-weight:800;">' + (expanded?'\u2212':'+') + '</button>';
         html += leaderboardRow(i+1, r.contactName, '', [
           {value: r.baiatDate, label: 'Date'},
+          {value: r.missionary, label: 'Missionary'},
+          {value: r.region||'\u2014', label: 'Region'},
+          {value: r.via?'Daeen':'Missionary', label: 'Via'},
           {value: aux||'\u2014', label: 'Tajneed'},
           {value: r.formConfirmed?'\u2713':'\u2014', label: 'Form'}
         ], expandBtn);
         if(expanded){
           html += '<div class="nested-block" style="margin-top:0; margin-bottom:10px;">';
-          html += '<div class="muted" style="margin-bottom:8px;">Introduced by ' + escapeHtml(r.introducedBy) + (r.via?' (Daeen)':' (Missionary)') + (r.region?(' &middot; ' + escapeHtml(r.region)):'') + '</div>';
           html += '<div class="field" style="margin-bottom:14px;"><label>Status</label><select data-action="updateBaiatStatus" data-contactid="' + r.id + '" data-sourcetype="' + r.sourceType + '" data-sourceid="' + r.sourceId + '">';
           for(let s=0;s<4;s++) html += '<option value="' + s + '" ' + (s===3?'selected':'') + '>' + escapeHtml(state.stageLabels[s]) + '</option>';
           html += '</select><div class="muted" style="margin-top:5px;">Changing this away from Bai\u2019at removes them from this list.</div></div>';
@@ -2711,6 +2773,10 @@
     root.querySelectorAll('[data-action="engage"]').forEach(b=> b.addEventListener('click', ()=> {
       logDaeenEngagement(b.getAttribute('data-id'), b.getAttribute('data-method'));
       showToast('Engagement logged');
+    }));
+    root.querySelectorAll('[data-action="toggleTrained"]').forEach(cb=> cb.addEventListener('change', e=>{
+      const checked = e.target.checked;
+      updateDaeenEntry(cb.getAttribute('data-id'), {lastTrainedDate: checked ? todayStr() : ''});
     }));
     root.querySelectorAll('[data-action="editdaeen"]').forEach(b=> b.addEventListener('click', ()=>{ state.editingDaeenId=b.getAttribute('data-id'); render(); }));
     root.querySelectorAll('[data-action="deletedaeen"]').forEach(b=> b.addEventListener('click', ()=>{ if(confirm('Remove this Daeen?')) deleteDaeenEntry(b.getAttribute('data-id')); }));

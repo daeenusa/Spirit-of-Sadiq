@@ -198,6 +198,7 @@
   const root = document.getElementById('root');
   let state = {
     loading: true,
+    loadFailed: false,
     me: null,               // {role:'missionary'|'admin', id, name}
     admins: [],
     missionaries: [],        // [{id,name,target,groups,isRegionalLeader,regionalLeaderId}]
@@ -307,12 +308,16 @@
     try{
       const res = await fetch(API_URL + '?action=getAll', { method: 'GET' });
       if(!res.ok) throw new Error('HTTP ' + res.status);
-      return await res.json();
+      const data = await res.json();
+      // A real response should have plenty of keys (missionaries, daeen-roster,
+      // contacts-m:*, contacts-d:*, ...). A near-empty object with a 200 OK
+      // usually means the request came back before the Sheet actually finished
+      // reading — not that the org genuinely has no data.
+      if(Object.keys(data||{}).length < 2) throw new Error('Suspiciously empty response');
+      return data;
     }catch(err){
       console.error(err);
-      state.error = 'Could not reach the spreadsheet. Check your connection and reload.';
-      render();
-      return {};
+      return null;
     }
   }
   async function gsSet(key, value){
@@ -378,12 +383,26 @@
   }
 
   async function loadAll(){
-    state.loading = true; render();
+    state.loading = true; state.loadFailed = false; render();
 
     state.me = localGetMe();
     if(state.me && state.me.role==='daeen') state.me = null; // old Daeen logins are retired
 
-    const kv = await gsGetAll();
+    let kv = await gsGetAll();
+    if(!kv){
+      // One quiet retry before bothering the person — this covers the common
+      // case of a single slow/failed request during a busy moment.
+      await new Promise(r=>setTimeout(r, 1200));
+      kv = await gsGetAll();
+    }
+
+    if(!kv){
+      state.loading = false;
+      state.loadFailed = true;
+      render();
+      return;
+    }
+
     state.kv = kv; // keep a snapshot around for anything else that might read it directly
 
     if(kv['admins']){ try{ state.admins = JSON.parse(kv['admins']); }catch(e){ state.admins = []; } }
@@ -2520,6 +2539,14 @@
   function render(){
     const __focus = captureFocus();
     if(state.loading){ root.innerHTML = '<div class="app"><div class="loading">Loading…</div></div>'; return; }
+    if(state.loadFailed){
+      root.innerHTML = '<div class="app"><div class="setup-screen"><h1>Spirit of Sadiq</h1><div class="sub">Missionary Tabligh Reporting</div>'
+        + '<div class="setup-card"><div class="error-text" style="margin-bottom:14px; font-size:14px;">Couldn\u2019t load your data. This usually means the spreadsheet was too busy to respond in time — often because several people are using the app at once.</div>'
+        + '<button class="primary" id="retryLoadBtn">Try again</button></div></div></div>';
+      const retryBtn = document.getElementById('retryLoadBtn');
+      if(retryBtn) retryBtn.addEventListener('click', loadAll);
+      return;
+    }
     if(!state.me){ root.innerHTML = '<div class="app">' + renderSetup() + '</div>'; attachSetupHandlers(); restoreFocus(__focus); return; }
 
     const roleLabel = state.me.role==='missionary'?'Missionary':'National Access';

@@ -231,6 +231,7 @@
     expandedHistoryId: null,
     expandedBaiatId: null,
     transferringContactId: null,
+    assigningToDaeenContactId: null,
     addingDaeen: false,
     editingDaeenId: null,
     expandedDaeenId: null,
@@ -1193,6 +1194,8 @@
       html += '<div class="contact-actions">';
       html += '<button class="small-link" data-action="edit" data-id="' + c.id + '">Edit</button>';
       if(opts.transferable) html += '<button class="small-link" data-action="startTransfer" data-id="' + c.id + '">Transfer</button>';
+      const myOwnDaeen = state.daeenRoster.filter(d=>d.missionaryId===state.me.id);
+      if(opts.transferable && myOwnDaeen.length) html += '<button class="small-link" data-action="startAssignToDaeen" data-id="' + c.id + '">Assign to Daeen</button>';
       html += '<button class="small-link" data-action="toggleUnresponsive" data-id="' + c.id + '">' + (c.unresponsive?'Mark responsive again':'Mark unresponsive') + '</button>';
       html += '<button class="danger-link" data-action="delete" data-id="' + c.id + '">Delete</button>';
       html += '</div>';
@@ -1200,6 +1203,11 @@
         html += '<div class="nested-block"><div class="field" style="margin-bottom:8px;"><label>Transfer to</label><select id="transferTarget_' + c.id + '">';
         state.missionaries.filter(m=>m.id!==state.me.id).forEach(m=> html += '<option value="' + m.id + '">' + escapeHtml(m.name) + '</option>');
         html += '</select></div><div class="form-actions"><button class="primary" data-action="confirmTransfer" data-id="' + c.id + '">Confirm transfer</button><button class="ghost" data-action="cancelTransfer">Cancel</button></div></div>';
+      }
+      if(opts.transferable && state.assigningToDaeenContactId === c.id){
+        html += '<div class="nested-block"><div class="field" style="margin-bottom:8px;"><label>Assign to</label><select id="assignDaeenTarget_' + c.id + '">';
+        myOwnDaeen.forEach(d=> html += '<option value="' + d.id + '">' + escapeHtml(d.name) + '</option>');
+        html += '</select></div><div class="form-actions"><button class="primary" data-action="confirmAssignToDaeen" data-id="' + c.id + '">Confirm assign</button><button class="ghost" data-action="cancelAssignToDaeen">Cancel</button></div></div>';
       }
     }
     html += '</div>';
@@ -1361,6 +1369,32 @@
     await saveContactsM(state.me.id);
     await saveContactsM(targetMissionaryId);
     state.transferringContactId = null;
+    render();
+  }
+  async function assignContactToDaeen(contactId, daeenId){
+    if(!daeenId) return;
+    const list = state.contactsM[state.me.id] || [];
+    const idx = list.findIndex(c=>c.id===contactId);
+    if(idx===-1) return;
+    const c = list.splice(idx,1)[0];
+    await saveContactsM(state.me.id);
+    if(!state.contactsD[daeenId]) state.contactsD[daeenId] = [];
+    state.contactsD[daeenId].push(c);
+    await saveContactsD(daeenId);
+    state.assigningToDaeenContactId = null;
+    showToast('Assigned to Daeen');
+    render();
+  }
+  async function takeOverContact(daeenId, contactId){
+    const list = state.contactsD[daeenId] || [];
+    const idx = list.findIndex(c=>c.id===contactId);
+    if(idx===-1) return;
+    const c = list.splice(idx,1)[0];
+    await saveContactsD(daeenId);
+    if(!state.contactsM[state.me.id]) state.contactsM[state.me.id] = [];
+    state.contactsM[state.me.id].push(c);
+    await saveContactsM(state.me.id);
+    showToast('Now your personal contact');
     render();
   }
 
@@ -1604,11 +1638,6 @@
     }
     html += '</div>';
     if(c.unresponsive) html += '<span class="flag-badge">Unresponsive</span>';
-    if(opts.showOwnerBadge){
-      const dRec = state.daeenRoster.find(x=>x.id===daeenId);
-      html += '<span style="background:var(--surface-alt); color:var(--text-muted); font-size:10px; font-weight:700; padding:3px 9px; border-radius:6px; white-space:nowrap; text-transform:uppercase; letter-spacing:0.03em;">Via ' + escapeHtml(dRec?dRec.name:'Daeen') + '</span>';
-    }
-    html += '</div>';
     html += '<div class="row-between" style="align-items:center; margin-bottom:6px; gap:10px;">';
     html += '<div class="trail-caption" style="margin-bottom:0;">' + (c.unresponsive?'Last known stage':'Currently') + ': <b>' + escapeHtml(state.stageLabels[c.stage]) + '</b></div>';
     if(c.stage < 3 && !c.unresponsive){
@@ -1626,6 +1655,7 @@
     html += '</div>';
     html += '<div class="contact-actions">';
     html += '<button class="small-link" data-action="dcEdit" data-daeenid="' + daeenId + '" data-id="' + c.id + '">Edit</button>';
+    html += '<button class="small-link" data-action="takeOverContact" data-daeenid="' + daeenId + '" data-id="' + c.id + '">Take over personally</button>';
     html += '<button class="small-link" data-action="dcToggleUnresponsive" data-daeenid="' + daeenId + '" data-id="' + c.id + '">' + (c.unresponsive?'Mark responsive again':'Mark unresponsive') + '</button>';
     html += '<button class="danger-link" data-action="dcDelete" data-daeenid="' + daeenId + '" data-id="' + c.id + '">Delete</button>';
     html += '</div></div>';
@@ -2890,6 +2920,22 @@
       const id = b.getAttribute('data-id');
       const sel = document.getElementById('transferTarget_' + id);
       if(sel) transferContact(id, sel.value);
+    }));
+    root.querySelectorAll('[data-action="startAssignToDaeen"]').forEach(b=> b.addEventListener('click', ()=>{
+      state.assigningToDaeenContactId = b.getAttribute('data-id');
+      render();
+    }));
+    root.querySelectorAll('[data-action="cancelAssignToDaeen"]').forEach(b=> b.addEventListener('click', ()=>{
+      state.assigningToDaeenContactId = null;
+      render();
+    }));
+    root.querySelectorAll('[data-action="confirmAssignToDaeen"]').forEach(b=> b.addEventListener('click', ()=>{
+      const id = b.getAttribute('data-id');
+      const sel = document.getElementById('assignDaeenTarget_' + id);
+      if(sel) assignContactToDaeen(id, sel.value);
+    }));
+    root.querySelectorAll('[data-action="takeOverContact"]').forEach(b=> b.addEventListener('click', ()=>{
+      takeOverContact(b.getAttribute('data-daeenid'), b.getAttribute('data-id'));
     }));
 
     root.querySelectorAll('[data-action="engage"]').forEach(b=> b.addEventListener('click', ()=> {

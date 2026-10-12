@@ -166,6 +166,13 @@
   table.ysheet .ys-jam{font-size:11.5px; line-height:1.45; color:var(--text-muted);}
   table.ysheet .ys-lead{color:var(--accent-deep); font-weight:700; font-size:11px;}
   table.ysheet .ys-zero{color:var(--text-muted);}
+  table.ysheet .ys-hint{font-weight:600; font-style:normal; font-size:11.5px; opacity:.85;}
+  table.ysheet td.ys-edit{padding:4px 3px;}
+  table.ysheet .ys-input{width:58px; max-width:100%; text-align:center; font:inherit; font-size:13px; padding:5px 2px; border:1px dashed var(--accent); border-radius:6px; background:var(--surface); color:var(--text); -moz-appearance:textfield;}
+  table.ysheet .ys-input::-webkit-outer-spin-button, table.ysheet .ys-input::-webkit-inner-spin-button{-webkit-appearance:none; margin:0;}
+  table.ysheet .ys-input:focus{outline:2px solid var(--accent); outline-offset:1px; border-style:solid;}
+  table.ysheet .ys-input.ys-edited{background:var(--accent-soft); font-weight:700; border-style:solid;}
+  table.ysheet .ys-reset{font-size:11px; margin-top:2px;}
   table.admin-table select{font-size:12px; padding:5px 6px; border-radius:6px; border:1px solid var(--border);}
   .import-instructions{font-size:12px; color:var(--text-muted); line-height:1.6; margin-bottom:10px;}
   .import-instructions code{background:var(--surface-alt); padding:1px 5px; border-radius:5px;}
@@ -269,6 +276,7 @@
     selectedAdminId: '',
     selectedMissionaryId: '',
     addingAdminMember: false,
+    ytdOverrides: {},
     changingMyPassword: false, cpOld: '', cpNew: '', cpConfirm: '',
     error: ''
   };
@@ -441,6 +449,8 @@
     if(kv['missionaries']){ try{ state.missionaries = JSON.parse(kv['missionaries']); }catch(e){ state.missionaries = []; } }
     if(kv['daeen-roster']){ try{ state.daeenRoster = JSON.parse(kv['daeen-roster']); }catch(e){ state.daeenRoster = []; } }
     if(kv['stage-labels']){ try{ state.stageLabels = JSON.parse(kv['stage-labels']); }catch(e){} }
+    state.ytdOverrides = {};
+    if(kv['ytd-overrides']){ try{ state.ytdOverrides = JSON.parse(kv['ytd-overrides']) || {}; }catch(e){ state.ytdOverrides = {}; } }
 
     state.contactsM = {};
     state.groupReports = {};
@@ -1740,7 +1750,7 @@
     if(!leaderId) return null;
     const rl = state.missionaries.find(x=>x.id===leaderId);
     if(!rl) return null;
-    const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id);
+    const team = teamOf(rl);
     return {rl, team};
   }
 
@@ -1796,7 +1806,7 @@
     const leaders = state.missionaries.filter(m=>m.isRegionalLeader);
     if(leaders.length){
       const regionRanked = leaders.map(rl=>{
-        const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id);
+        const team = teamOf(rl);
         const baiats = team.reduce((s,m)=>s+baiatsYTDForMissionary(m.id),0);
         let activeDaeen=0, daeenTotal=0, personalContacts=0, daeenContacts=0;
         team.forEach(m=>{
@@ -1897,7 +1907,7 @@
   }
 
   function renderRegionTab(){
-    const myMissionaries = state.missionaries.filter(m=>m.regionalLeaderId===state.me.id);
+    const myMissionaries = state.missionaries.filter(m=>m.regionalLeaderId===state.me.id && !m.isInCharge);
     let totalContacts=0, totalDaeen=0, totalBaiats=0;
     for(const m of myMissionaries){
       const metrics = computeMetrics(m.id);
@@ -1940,7 +1950,8 @@
 
   function renderGoalsAndGroups(periodMode){
     const isWeek = periodMode !== 'month';
-    const goalMissionaries = isWeek ? assignedMissionaries() : state.missionaries;
+    const goalMissionaries = isWeek ? assignedMissionaries() : countedMissionaries();
+    const rosterC = countedDaeen();
     let html = '';
 
     // ----- Missionary Bai'at goals (overall summary only — detail now nested by region below) -----
@@ -1954,17 +1965,17 @@
     html += '</div>';
 
     // ----- Daeen annual Bai'at goals -----
-    const daeenMet = state.daeenRoster.filter(d=>daeenMetAnnualGoal(d.id)).length;
+    const daeenMet = rosterC.filter(d=>daeenMetAnnualGoal(d.id)).length;
     html += '<div class="card"><h2>Daeen Bai\'at goals (1 per year, year to date)</h2>';
-    html += progressBarHtml(daeenMet, state.daeenRoster.length, 'Daeen who have reached their goal');
+    html += progressBarHtml(daeenMet, rosterC.length, 'Daeen who have reached their goal');
     html += '</div>';
 
     // ----- Active Daeen goal -----
-    const activeDaeen = state.daeenRoster.filter(d=>isDaeenActive(d.id)).length;
+    const activeDaeen = rosterC.filter(d=>isDaeenActive(d.id)).length;
     html += '<div class="card"><h2>Active Daeen goal</h2>';
     html += '<div class="muted" style="margin-bottom:10px;">Active means the Daeen or their missionary logged contact within the last ' + DAEEN_ACTIVE_WINDOW_DAYS + ' days — either the missionary reaching out to the Daeen, or the Daeen engaging their own contacts.</div>';
-    html += progressBarHtml(activeDaeen, state.daeenRoster.length, 'Daeen currently active');
-    const inactiveDaeen = state.daeenRoster.filter(d=>!isDaeenActive(d.id));
+    html += progressBarHtml(activeDaeen, rosterC.length, 'Daeen currently active');
+    const inactiveDaeen = rosterC.filter(d=>!isDaeenActive(d.id));
     if(inactiveDaeen.length){
       html += '<div class="nested-block"><div class="muted" style="margin-bottom:8px; font-weight:700;">Inactive — needs a check-in:</div>';
       inactiveDaeen.forEach(d=>{
@@ -1981,7 +1992,7 @@
       html += '<div class="card"><h2>Progress by region</h2>';
       const months = monthsSinceTrackingStart();
       leaders.forEach(rl=>{
-        const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id);
+        const team = teamOf(rl);
         const ytd = team.reduce((s,m)=>s+baiatsYTDForMissionary(m.id),0);
         const goal = team.reduce((s,m)=>s+(m.target||10),0);
         html += '<div class="nested-block" style="margin-top:14px; padding-top:14px;">';
@@ -2004,8 +2015,8 @@
       });
       if(!isWeek){
         const coveredIds = new Set();
-        leaders.forEach(rl=> state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id).forEach(m=>coveredIds.add(m.id)));
-        const unassignedTeam = state.missionaries.filter(m=>!coveredIds.has(m.id));
+        leaders.forEach(rl=> teamOf(rl).forEach(m=>coveredIds.add(m.id)));
+        const unassignedTeam = state.missionaries.filter(m=>!coveredIds.has(m.id) && !m.isInCharge);
         if(unassignedTeam.length){
           const uYtd = unassignedTeam.reduce((s,m)=>s+baiatsYTDForMissionary(m.id),0);
           const uGoal = unassignedTeam.reduce((s,m)=>s+(m.target||10),0);
@@ -2034,12 +2045,24 @@
     return html;
   }
 
+  // The Missionary In-Charge keeps full access to the app but isn't part of
+  // any report, total, ranking or list of data. National Access flags them in
+  // the Missionaries tab (isInCharge).
+  function countedMissionaries(){ return state.missionaries.filter(m=>!m.isInCharge); }
+  function inChargeIds(){ return new Set(state.missionaries.filter(m=>m.isInCharge).map(m=>m.id)); }
+  function countedDaeen(){
+    const ex = inChargeIds();
+    return ex.size ? state.daeenRoster.filter(d=>!ex.has(d.missionaryId)) : state.daeenRoster;
+  }
+  function teamOf(rl){
+    return state.missionaries.filter(m=>(m.id===rl.id || m.regionalLeaderId===rl.id) && !m.isInCharge);
+  }
   function assignedMissionaries(){
     // A non-empty regionalLeaderId isn't enough on its own — if that id points
     // to someone who is no longer (or never was) a current regional leader,
     // this person is effectively unassigned too, even though the field isn't blank.
     const leaderIds = new Set(state.missionaries.filter(m=>m.isRegionalLeader).map(m=>m.id));
-    return state.missionaries.filter(m=>m.isRegionalLeader || leaderIds.has(m.regionalLeaderId));
+    return state.missionaries.filter(m=>!m.isInCharge && (m.isRegionalLeader || leaderIds.has(m.regionalLeaderId)));
   }
   function renderReport(periodMode){
     const isWeek = periodMode !== 'month';
@@ -2052,7 +2075,7 @@
     // and including them skews "X of Y reported" numbers. The monthly report
     // is the org-wide record, so it includes everyone, with anyone unassigned
     // called out as their own group rather than silently folded in or left out.
-    const reportMissionaries = isWeek ? assignedMissionaries() : state.missionaries;
+    const reportMissionaries = isWeek ? assignedMissionaries() : countedMissionaries();
 
     const stageTotals = [0,0,0,0];
     let totalContacts=0, totalBaiats=0, totalPersonalContacts=0, totalDaeenContacts=0;
@@ -2119,7 +2142,7 @@
     html += '<div class="card"><div class="row-between"><h2>By region — with reporting compliance</h2><button class="ghost" id="copySummaryBtn">Copy ' + periodWord + 'ly report</button></div>';
     html += '<div class="muted" style="margin-bottom:12px;">Region totals, who hasn\u2019t reported yet, and each missionary\u2019s numbers.</div>';
     reportRegionLeaders.forEach(rl=>{
-      const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id);
+      const team = teamOf(rl);
       let dR=0, dT=0, cR=0, cT=0, bM=0, dcR=0, dcT=0;
       team.forEach(m=>{
         const met = computeMetricsForPeriod(m.id, periodStart);
@@ -2152,8 +2175,8 @@
     });
     if(!isWeek){
       const coveredIds = new Set();
-      reportRegionLeaders.forEach(rl=> state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id).forEach(m=>coveredIds.add(m.id)));
-      const unassignedTeam = state.missionaries.filter(m=>!coveredIds.has(m.id));
+      reportRegionLeaders.forEach(rl=> teamOf(rl).forEach(m=>coveredIds.add(m.id)));
+      const unassignedTeam = state.missionaries.filter(m=>!coveredIds.has(m.id) && !m.isInCharge);
       if(unassignedTeam.length){
         html += '<div class="nested-block" style="margin-top:16px; padding-top:16px;">';
         html += '<div class="row-between"><div class="name" style="font-size:16px;">Unassigned</div><div class="muted">' + unassignedTeam.length + ' missionaries</div></div>';
@@ -2197,12 +2220,12 @@
       return {baiatsThisPeriod, activeContacts, totalContacts: allContacts.length, activeDaeen, totalDaeen: daeenIds.length};
     }
 
-    const national = teamStats(state.missionaries);
+    const national = teamStats(countedMissionaries());
     lines.push('NATIONAL OVERVIEW — Bai\u2019ats: ' + national.baiatsThisPeriod + ' | Contacts: ' + national.activeContacts + '/' + national.totalContacts + ' | Daeen: ' + national.activeDaeen + '/' + national.totalDaeen);
     lines.push('');
 
-    const reported = state.missionaries.filter(m=>reportedFn(m.id));
-    const notReported = state.missionaries.filter(m=>!reportedFn(m.id));
+    const reported = countedMissionaries().filter(m=>reportedFn(m.id));
+    const notReported = countedMissionaries().filter(m=>!reportedFn(m.id));
     lines.push('REPORTED (' + reported.length + '): ' + (reported.length ? reported.map(m=>m.name).join(', ') : 'None'));
     lines.push('DID NOT REPORT (' + notReported.length + '): ' + (notReported.length ? notReported.map(m=>m.name).join(', ') : 'None'));
     lines.push('');
@@ -2211,7 +2234,7 @@
     if(leaders.length){
       lines.push('BY REGION:');
       leaders.forEach(rl=>{
-        const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id);
+        const team = teamOf(rl);
         const s = teamStats(team);
         lines.push((rl.regionLabel||'Unnamed region') + ' — Bai\u2019ats: ' + s.baiatsThisPeriod + ' | Contacts: ' + s.activeContacts + '/' + s.totalContacts + ' | Daeen: ' + s.activeDaeen + '/' + s.totalDaeen);
       });
@@ -2412,7 +2435,7 @@
   }
   function renderAdminMissionaries(){
     let html = '<div class="card"><h2>All missionaries</h2>';
-    html += '<div class="muted" style="margin-bottom:10px;">Mark the 6–7 who lead a region, then assign every other missionary to report to one of them. Sorted by region.</div>';
+    html += '<div class="muted" style="margin-bottom:10px;">Mark the 6–7 who lead a region, then assign every other missionary to report to one of them. Sorted by region. Tick <b>In-charge</b> for the Missionary In-Charge: they keep full access but are left out of every report, total, ranking and list of data.</div>';
     if(!state.missionaries.length) html += '<div class="empty-state">None yet.</div>';
     const regionalLeaders = state.missionaries.filter(m=>m.isRegionalLeader);
     const sorted = state.missionaries.slice().sort((a,b)=>{
@@ -2421,7 +2444,7 @@
       if(a.isRegionalLeader !== b.isRegionalLeader) return a.isRegionalLeader ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
-    html += '<table class="admin-table"><thead><tr><th>Name</th><th>Region</th><th>Regional?</th><th>Reports to</th><th>Daeen</th><th>Bai\u2019ats YTD</th><th>Contacts YTD</th><th>Daeen contacts YTD</th><th></th></tr></thead><tbody>';
+    html += '<table class="admin-table"><thead><tr><th>Name</th><th>Region</th><th>Regional?</th><th>In-charge</th><th>Reports to</th><th>Daeen</th><th>Bai\u2019ats YTD</th><th>Contacts YTD</th><th>Daeen contacts YTD</th><th></th></tr></thead><tbody>';
     for(const m of sorted){
       const count = state.daeenRoster.filter(d=>d.missionaryId===m.id).length;
       const baiats = baiatsYTDForMissionary(m.id);
@@ -2431,6 +2454,7 @@
       const daeenYTD = reachedOutYTD(daeenContacts);
       html += '<tr><td>' + escapeHtml(m.name) + '</td><td>' + escapeHtml(getMissionaryRegionLabel(m)||'—') + '</td>';
       html += '<td><input type="checkbox" data-action="toggleRL" data-id="' + m.id + '" ' + (m.isRegionalLeader?'checked':'') + '></td>';
+      html += '<td><input type="checkbox" data-action="toggleInCharge" data-id="' + m.id + '" ' + (m.isInCharge?'checked':'') + '></td>';
       if(m.isRegionalLeader){ html += '<td>—</td>'; }
       else {
         html += '<td><select data-action="assignRL" data-id="' + m.id + '"><option value="">unassigned</option>';
@@ -2474,63 +2498,230 @@
       jamaats
     };
   }
-  function renderAdminYtdSheet(){
-    const now = new Date();
-    const fmt = d => d.toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'});
-    const rangeText = fmt(new Date(now.getFullYear(), 0, 1)) + ' – ' + fmt(now);
-    const COLS = 10;
-
+  const YTD_FIELDS = ['target','baiats','daeen','daeenContacts','personalContacts','baiatsPersonal','baiatsDaeen'];
+  function ytdHasOverride(o, k){ return !!o && o[k] !== undefined && o[k] !== null && o[k] !== ''; }
+  // Numbers typed in by National Access apply to unassigned missionaries only.
+  // Anything not typed in falls back to what the app counts.
+  function ytdEffectiveRow(m, unassigned){
+    const r = ytdRowData(m);
+    const out = Object.assign({}, r, {edited:false, over:{}});
+    const o = unassigned ? ((state.ytdOverrides || {})[m.id] || null) : null;
+    if(o){
+      ['target','daeen','daeenContacts','personalContacts','baiatsPersonal','baiatsDaeen'].forEach(k=>{
+        if(ytdHasOverride(o,k)){ out[k] = Number(o[k]); out.over[k] = true; }
+      });
+      if(ytdHasOverride(o,'baiats')){ out.baiats = Number(o.baiats); out.over.baiats = true; }
+      else out.baiats = out.baiatsPersonal + out.baiatsDaeen;
+      out.edited = Object.keys(out.over).length > 0;
+    }
+    return out;
+  }
+  function ytdTotals(list){
+    const t = {};
+    YTD_FIELDS.forEach(k=>{ t[k] = list.reduce((s,r)=>s+(Number(r[k])||0), 0); });
+    return t;
+  }
+  function ytdModel(){
     const leaders = state.missionaries.filter(m=>m.isRegionalLeader)
       .sort((a,b)=> regionSortKey(a).localeCompare(regionSortKey(b)) || a.name.localeCompare(b.name));
     const coveredIds = new Set();
-    const groups = leaders.map(rl=>{
+    const raw = leaders.map(rl=>{
       const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id)
         .sort((a,b)=> (a.id===rl.id ? -1 : b.id===rl.id ? 1 : a.name.localeCompare(b.name)));
       team.forEach(m=>coveredIds.add(m.id));
-      return {label: rl.regionLabel || rl.name || 'Unnamed region', leaderId: rl.id, team, unassigned:false};
+      return {id: rl.id, label: rl.regionLabel || rl.name || 'Unnamed region', leaderId: rl.id, team, unassigned:false};
     });
     const unassignedTeam = state.missionaries.filter(m=>!coveredIds.has(m.id)).sort((a,b)=>a.name.localeCompare(b.name));
-    if(unassignedTeam.length) groups.push({label:'Unassigned', leaderId:'', team:unassignedTeam, unassigned:true});
+    if(unassignedTeam.length) raw.push({id:'unassigned', label:'Unassigned', leaderId:'', team:unassignedTeam, unassigned:true});
 
-    const sum = (rows, k)=> rows.reduce((t,r)=>t+r[k], 0);
-    const cell = (v, extra)=> '<td' + (extra||'') + '>' + (v===0 ? '<span class="ys-zero">0</span>' : v) + '</td>';
+    let n = 0; const all = []; const groups = [];
+    raw.forEach(g=>{
+      // The Missionary In-Charge keeps full access but is left out of the data.
+      const rows = g.team.filter(m=>!m.isInCharge).map(m=>{
+        n++;
+        const r = ytdEffectiveRow(m, g.unassigned);
+        all.push(r);
+        return {m, r, n, lead: !g.unassigned && m.id===g.leaderId};
+      });
+      if(!rows.length) return;
+      groups.push({id:g.id, label:g.label, unassigned:g.unassigned, rows, totals: ytdTotals(rows.map(x=>x.r))});
+    });
+    return {groups, totals: ytdTotals(all), count: all.length, excluded: state.missionaries.filter(m=>m.isInCharge).length};
+  }
+  function ytdRangeText(){
+    const now = new Date();
+    const fmt = d => d.toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'});
+    return fmt(new Date(now.getFullYear(), 0, 1)) + ' – ' + fmt(now);
+  }
+  function ytdSheetTable(){
+    const model = ytdModel();
+    const rows = [];
+    rows.push(['Missionaries — Year-to-Date Tabligh / Bai’at Data (' + ytdRangeText() + ')']);
+    rows.push(['No.','Name of Missionary','Jama’ats','(Personal) Bai’at Target','Bai’ats year to date','How many Daeen?','How many contacts does your Daeen have?','How many personal contacts does the Missionary have?','Bai’ats (by Missionary)','Bai’ats (by Daeen)']);
+    const line = (a, r)=> a.concat(YTD_FIELDS.map(k=>r[k]));
+    model.groups.forEach(g=>{
+      rows.push(['', g.label]);
+      g.rows.forEach(x=> rows.push(line([x.n, x.m.name + (x.lead ? ' [Lead]' : ''), x.r.jamaats.join(', ')], x.r)));
+      rows.push(line(['', g.label + ' total', ''], g.totals));
+    });
+    if(model.count) rows.push(line(['', 'All missionaries', ''], model.totals));
+    return rows;
+  }
+  function ytdExportText(kind){
+    const rows = ytdSheetTable();
+    const width = 10;
+    rows.forEach(r=>{ while(r.length < width) r.push(''); });
+    if(kind === 'tsv') return rows.map(r=> r.map(c=> String(c).replace(/[\t\r\n]+/g,' ')).join('\t')).join('\n');
+    return rows.map(r=> r.map(c=>{
+      const t = String(c);
+      return /[",\r\n]/.test(t) ? '"' + t.replace(/"/g,'""') + '"' : t;
+    }).join(',')).join('\r\n');
+  }
+  function copyYtdForSheets(){
+    const text = ytdExportText('tsv');
+    const done = ()=> showToast('Copied — paste into a Google Sheet');
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done).catch(()=> fallbackCopy(text, done));
+    } else fallbackCopy(text, done);
+  }
+  function fallbackCopy(text, done){
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){ showToast('Could not copy — use Download CSV instead'); }
+    document.body.removeChild(ta);
+  }
+  function downloadYtdCsv(){
+    const blob = new Blob(['﻿' + ytdExportText('csv')], {type:'text/csv;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'missionaries-ytd-' + todayStr() + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=> URL.revokeObjectURL(url), 1000);
+  }
+
+  // ----- editing the unassigned rows -----
+  let ytdSaveChain = Promise.resolve();
+  function setYtdStatus(text){
+    const el = document.getElementById('ytdSaveStatus');
+    if(el) el.textContent = text;
+  }
+  // Saves go one at a time, and each re-reads the latest shared copy first,
+  // so tabbing quickly through cells (or two people editing) never overwrites anything.
+  function persistYtdOverride(mid, field, val){
+    setYtdStatus('Saving…');
+    ytdSaveChain = ytdSaveChain.then(async ()=>{
+      const raw = await gsGetFresh('ytd-overrides');
+      let fresh = state.ytdOverrides || {};
+      if(raw){ try{ fresh = JSON.parse(raw) || {}; }catch(e){} }
+      if(field === null){ delete fresh[mid]; }
+      else {
+        const o = fresh[mid] = fresh[mid] || {};
+        if(val === null) delete o[field]; else o[field] = val;
+        if(!Object.keys(o).length) delete fresh[mid];
+      }
+      const ok = await gsSet('ytd-overrides', JSON.stringify(fresh));
+      setYtdStatus(ok ? 'Saved' : 'Could not save — try again');
+    });
+    return ytdSaveChain;
+  }
+  function refreshYtdTotals(forceId){
+    const model = ytdModel();
+    model.groups.forEach(g=>{
+      YTD_FIELDS.forEach(k=>{
+        const el = document.querySelector('[data-ytot="' + g.id + '|' + k + '"]');
+        if(el) el.textContent = g.totals[k];
+      });
+      if(g.unassigned) g.rows.forEach(x=>{
+        YTD_FIELDS.forEach(k=>{
+          const inp = document.getElementById('ys_' + x.m.id + '_' + k);
+          if(!inp) return;
+          if(document.activeElement !== inp || inp.id === forceId) inp.value = x.r[k];
+          inp.classList.toggle('ys-edited', !!x.r.over[k]);
+        });
+        const rb = document.querySelector('[data-yreset="' + x.m.id + '"]');
+        if(rb) rb.style.display = x.r.edited ? '' : 'none';
+      });
+    });
+    YTD_FIELDS.forEach(k=>{
+      const el = document.querySelector('[data-ytot="all|' + k + '"]');
+      if(el) el.textContent = model.totals[k];
+    });
+  }
+  function onYtdInputChange(inp){
+    const mid = inp.getAttribute('data-ymid'), field = inp.getAttribute('data-yfield');
+    const text = inp.value.trim();
+    let val = null;
+    if(text !== ''){
+      const num = Math.round(Number(text));
+      if(!isFinite(num) || num < 0){ showToast('Enter a whole number, 0 or higher'); refreshYtdTotals(inp.id); return; }
+      val = num;
+    }
+    state.ytdOverrides = state.ytdOverrides || {};
+    const o = state.ytdOverrides[mid] = state.ytdOverrides[mid] || {};
+    if(val === null) delete o[field]; else o[field] = val;
+    if(!Object.keys(o).length) delete state.ytdOverrides[mid];
+    refreshYtdTotals(val === null ? inp.id : '');
+    persistYtdOverride(mid, field, val);
+  }
+  function resetYtdRow(mid){
+    if(!confirm('Clear the numbers typed in for this missionary and go back to what the app counts?')) return;
+    if(state.ytdOverrides) delete state.ytdOverrides[mid];
+    render();
+    persistYtdOverride(mid, null, null);
+  }
+  async function toggleInCharge(id){
+    await mutateSharedMissionaries(fresh=>{
+      const m = fresh.find(x=>x.id===id);
+      if(m) m.isInCharge = !m.isInCharge;
+    });
+  }
+
+  function renderAdminYtdSheet(){
+    const COLS = 10;
+    const model = ytdModel();
+    const ycell = (v)=> '<td>' + (v===0 ? '<span class="ys-zero">0</span>' : v) + '</td>';
+    const yinput = (mid, k, r)=> '<td class="ys-edit"><input type="number" min="0" step="1" inputmode="numeric" class="ys-input' + (r.over[k] ? ' ys-edited' : '') + '" id="ys_' + mid + '_' + k + '" data-ymid="' + mid + '" data-yfield="' + k + '" value="' + r[k] + '"></td>';
+    const totalCells = (id, t)=> YTD_FIELDS.map(k=> '<td data-ytot="' + id + '|' + k + '">' + t[k] + '</td>').join('');
 
     let html = '<div class="card">';
     html += '<div class="ysheet-wrap"><table class="ysheet"><thead>';
-    html += '<tr><th class="ys-title" colspan="' + COLS + '"><span>Missionaries — Year-to-Date Tabligh / Bai’at Data (' + escapeHtml(rangeText) + ')</span></th></tr>';
-    html += '<tr><th class="ys-c1" style="background:var(--surface);"></th><th class="ys-c2" style="background:var(--surface);"></th><th colspan="2" style="background:var(--surface);"></th><th class="ys-databand" colspan="6">Year to Date — ' + now.getFullYear() + '</th></tr>';
+    html += '<tr><th class="ys-title" colspan="' + COLS + '"><span>Missionaries — Year-to-Date Tabligh / Bai’at Data (' + escapeHtml(ytdRangeText()) + ')</span></th></tr>';
+    html += '<tr><th class="ys-c1" style="background:var(--surface);"></th><th class="ys-c2" style="background:var(--surface);"></th><th colspan="2" style="background:var(--surface);"></th><th class="ys-databand" colspan="6">Year to Date — ' + new Date().getFullYear() + '</th></tr>';
     html += '<tr><th class="ys-c1">No.</th><th class="ys-c2">Name of Missionary</th><th class="ys-c3">Jama’ats</th><th>(Personal) Bai’at Target</th>';
     html += '<th>Bai’ats year to date</th><th>How many Daeen?</th><th>How many contacts does your Daeen have?</th><th>How many personal contacts does the Missionary have?</th><th>Bai’ats (by Missionary)</th><th>Bai’ats (by Daeen)</th></tr>';
     html += '</thead><tbody>';
 
-    let n = 0;
-    const allRows = [];
-    if(!groups.length) html += '<tr><td colspan="' + COLS + '" style="text-align:center; padding:18px; color:var(--text-muted);">No missionaries yet.</td></tr>';
-    groups.forEach(g=>{
-      html += '<tr class="ys-band' + (g.unassigned?' ys-unassigned':'') + '"><td colspan="' + COLS + '"><span>' + escapeHtml(g.label) + '</span></td></tr>';
-      const rows = [];
-      g.team.forEach(m=>{
-        n++;
-        const r = ytdRowData(m);
-        rows.push(r); allRows.push(r);
-        const lead = (!g.unassigned && m.id===g.leaderId);
-        html += '<tr><td class="ys-c1">' + n + '</td>';
-        html += '<td class="ys-c2">' + escapeHtml(m.name) + (lead ? ' <span class="ys-lead">[Lead]</span>' : '') + '</td>';
+    if(!model.groups.length) html += '<tr><td colspan="' + COLS + '" style="text-align:center; padding:18px; color:var(--text-muted);">No missionaries yet.</td></tr>';
+    model.groups.forEach(g=>{
+      html += '<tr class="ys-band' + (g.unassigned?' ys-unassigned':'') + '"><td colspan="' + COLS + '"><span>' + escapeHtml(g.label) + (g.unassigned ? ' <em class="ys-hint">— numbers in this section can be edited</em>' : '') + '</span></td></tr>';
+      g.rows.forEach(x=>{
+        const r = x.r, m = x.m;
+        html += '<tr><td class="ys-c1">' + x.n + '</td>';
+        html += '<td class="ys-c2">' + escapeHtml(m.name) + (x.lead ? ' <span class="ys-lead">[Lead]</span>' : '');
+        if(g.unassigned) html += '<div><button class="small-link ys-reset" data-yreset="' + m.id + '" data-action="ytdResetRow" data-id="' + m.id + '" style="' + (r.edited ? '' : 'display:none;') + '">use app numbers</button></div>';
+        html += '</td>';
         html += '<td class="ys-c3 ys-jam">' + (r.jamaats.length ? r.jamaats.map(escapeHtml).join('<br>') : '—') + '</td>';
-        html += '<td>' + r.target + '</td>';
-        html += '<td style="font-weight:800; color:' + (r.baiats>=r.target && r.baiats>0 ? 'var(--good)' : (r.baiats>0 ? 'var(--text)' : 'var(--text-muted)')) + ';">' + r.baiats + '</td>';
-        html += cell(r.daeen) + cell(r.daeenContacts) + cell(r.personalContacts) + cell(r.baiatsPersonal) + cell(r.baiatsDaeen);
+        if(g.unassigned){
+          YTD_FIELDS.forEach(k=> html += yinput(m.id, k, r));
+        } else {
+          html += '<td>' + r.target + '</td>';
+          html += '<td style="font-weight:800; color:' + (r.baiats>=r.target && r.baiats>0 ? 'var(--good)' : (r.baiats>0 ? 'var(--text)' : 'var(--text-muted)')) + ';">' + r.baiats + '</td>';
+          html += ycell(r.daeen) + ycell(r.daeenContacts) + ycell(r.personalContacts) + ycell(r.baiatsPersonal) + ycell(r.baiatsDaeen);
+        }
         html += '</tr>';
       });
-      html += '<tr class="ys-sub"><td class="ys-c1"></td><td class="ys-c2">' + escapeHtml(g.label) + ' total</td><td class="ys-c3"></td>';
-      html += '<td>' + sum(rows,'target') + '</td><td>' + sum(rows,'baiats') + '</td><td>' + sum(rows,'daeen') + '</td><td>' + sum(rows,'daeenContacts') + '</td><td>' + sum(rows,'personalContacts') + '</td><td>' + sum(rows,'baiatsPersonal') + '</td><td>' + sum(rows,'baiatsDaeen') + '</td></tr>';
+      html += '<tr class="ys-sub"><td class="ys-c1"></td><td class="ys-c2">' + escapeHtml(g.label) + ' total</td><td class="ys-c3"></td>' + totalCells(g.id, g.totals) + '</tr>';
     });
-    if(groups.length){
-      html += '<tr class="ys-total"><td class="ys-c1"></td><td class="ys-c2">All missionaries</td><td class="ys-c3"></td>';
-      html += '<td>' + sum(allRows,'target') + '</td><td>' + sum(allRows,'baiats') + '</td><td>' + sum(allRows,'daeen') + '</td><td>' + sum(allRows,'daeenContacts') + '</td><td>' + sum(allRows,'personalContacts') + '</td><td>' + sum(allRows,'baiatsPersonal') + '</td><td>' + sum(allRows,'baiatsDaeen') + '</td></tr>';
+    if(model.count){
+      html += '<tr class="ys-total"><td class="ys-c1"></td><td class="ys-c2">All missionaries</td><td class="ys-c3"></td>' + totalCells('all', model.totals) + '</tr>';
     }
     html += '</tbody></table></div>';
-    html += '<div class="muted" style="margin-top:10px; font-size:12px; line-height:1.5;">Bai’ats are counted from January 1 to today, across the missionary’s own contacts and their Daeen’s contacts. Daeen and contact numbers are current totals. Jama’ats are taken from each missionary’s Daeen. A green Bai’at count means the personal target has been met. Scroll sideways on a phone — the name stays in view.</div>';
+    html += '<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:12px;"><button class="primary" id="ytdCopyBtn">Copy for Google Sheets</button><button class="ghost" id="ytdCsvBtn">Download CSV</button><span id="ytdSaveStatus" class="muted" style="font-size:12px;"></span></div>';
+    html += '<div class="muted" style="margin-top:10px; font-size:12px; line-height:1.5;">Bai’ats are counted from January 1 to today, across the missionary’s own contacts and their Daeen’s contacts. Daeen and contact numbers are current totals. Jama’ats are taken from each missionary’s Daeen. A green Bai’at count means the personal target has been met.';
+    html += ' Unassigned rows: type over any number to replace what the app counts (the dashed boxes); clear a box to go back to the app’s number. These typed numbers appear on this page and in the copy and CSV only.';
+    if(model.excluded) html += ' ' + (model.excluded===1 ? '1 missionary is' : model.excluded + ' missionaries are') + ' marked In-Charge and left out of this page.';
+    html += ' Scroll sideways on a phone — the name stays in view.</div>';
     html += '</div>';
     return html;
   }
@@ -2541,7 +2732,7 @@
       if(d.lastEngaged && d.lastEngaged >= weekStartD) return true;
       return (state.contactsD[d.id]||[]).some(c=>(c.history||[]).some(h=>h>=weekStartD));
     }
-    const filtered = state.daeenRoster.filter(d=>{
+    const filtered = countedDaeen().filter(d=>{
       if(state.daeenFilterUnassigned && d.missionaryId) return false;
       if(state.daeenFilterNotContacted && contactedThisWeek(d)) return false;
       return !state.searchText || d.name.toLowerCase().includes(state.searchText.toLowerCase());
@@ -2550,7 +2741,7 @@
       if(ca !== cb) return ca ? 1 : -1;
       return (a.region||'').localeCompare(b.region||'') || a.name.localeCompare(b.name);
     });
-    let html = '<div class="card"><div class="row-between"><h2>All Daeen (' + state.daeenRoster.length + ')</h2>';
+    let html = '<div class="card"><div class="row-between"><h2>All Daeen (' + countedDaeen().length + ')</h2>';
     html += '<div class="row" style="gap:14px;">';
     html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="filterUnassigned" ' + (state.daeenFilterUnassigned?'checked':'') + '> unassigned only</label>';
     html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="filterNotContacted" ' + (state.daeenFilterNotContacted?'checked':'') + '> not contacted this week only</label>';
@@ -2579,7 +2770,8 @@
       contactsM: state.contactsM,
       contactsD: state.contactsD,
       groupReports: state.groupReports,
-      stageLabels: state.stageLabels
+      stageLabels: state.stageLabels,
+      ytdOverrides: state.ytdOverrides
     };
   }
   function exportBackup(){
@@ -2602,6 +2794,7 @@
     state.contactsD = data.contactsD || {};
     state.groupReports = data.groupReports || {};
     if(data.stageLabels) state.stageLabels = data.stageLabels;
+    state.ytdOverrides = data.ytdOverrides || {};
 
     await saveAdmins();
     await saveMissionaries();
@@ -2610,6 +2803,7 @@
     for(const id in state.contactsD) await saveContactsD(id);
     for(const id in state.groupReports) await saveGroupReports(id);
     await gsSet('stage-labels', JSON.stringify(state.stageLabels));
+    await gsSet('ytd-overrides', JSON.stringify(state.ytdOverrides));
 
     state.error = '';
     render();
@@ -2704,13 +2898,13 @@
 
   function collectAllBaiats(){
     let rows = [];
-    for(const m of state.missionaries){
+    for(const m of countedMissionaries()){
       const region = getMissionaryRegionLabel(m);
       for(const c of (state.contactsM[m.id]||[])){
         if(c.stage===3 && c.baiatDate) rows.push({id:c.id, sourceType:'m', sourceId:m.id, missionary:m.name, region, contactName:c.name, baiatDate:c.baiatDate, reason:c.notes||'', age:c.baiatAge||'', city:c.baiatCity||'', formConfirmed:!!c.baiatFormConfirmed, additionalInfo:c.baiatAdditionalInfo||'', metInPerson:c.baiatMetInPerson||'', faithAtBaiat:c.baiatFaithAtBaiat||'', faithAtBirth:c.baiatFaithAtBirth||'', gender:c.baiatGender||'', ethnicity:c.baiatEthnicity||'', motivation:c.baiatMotivation||'', introducedBy:m.name, via:''});
       }
     }
-    for(const d of state.daeenRoster){
+    for(const d of countedDaeen()){
       const m = state.missionaries.find(x=>x.id===d.missionaryId);
       const region = m ? getMissionaryRegionLabel(m) : '';
       for(const c of (state.contactsD[d.id]||[])){
@@ -2828,10 +3022,10 @@
       return (c.lastContact && c.lastContact>=weekStartC) || (c.history||[]).some(h=>h>=weekStartC);
     }
     let rows = [];
-    state.missionaries.forEach(m=>{
+    countedMissionaries().forEach(m=>{
       (state.contactsM[m.id]||[]).forEach(c=> rows.push({c, missionaryId:m.id, missionary:m.name, via:'', sourceType:'m', sourceId:m.id}));
     });
-    state.daeenRoster.forEach(d=>{
+    countedDaeen().forEach(d=>{
       const m = state.missionaries.find(x=>x.id===d.missionaryId);
       (state.contactsD[d.id]||[]).forEach(c=> rows.push({c, missionaryId: m?m.id:'', missionary: m?m.name:'(unassigned)', via:d.name, sourceType:'d', sourceId:d.id}));
     });
@@ -2957,6 +3151,10 @@
     const tabReport = document.getElementById('tabReport');
     if(tabReport) tabReport.addEventListener('click', ()=>{ state.tab='report'; render(); });
     const tabReportMonthly = document.getElementById('tabReportMonthly');
+    const ytdCopyBtn = document.getElementById('ytdCopyBtn');
+    if(ytdCopyBtn) ytdCopyBtn.addEventListener('click', copyYtdForSheets);
+    const ytdCsvBtn = document.getElementById('ytdCsvBtn');
+    if(ytdCsvBtn) ytdCsvBtn.addEventListener('click', downloadYtdCsv);
     const tabYtdSheet = document.getElementById('tabYtdSheet');
     if(tabYtdSheet) tabYtdSheet.addEventListener('click', ()=>{ state.tab='ytdsheet'; render(); });
     if(tabReportMonthly) tabReportMonthly.addEventListener('click', ()=>{ state.tab='reportMonthly'; render(); });
@@ -3224,6 +3422,9 @@
     root.querySelectorAll('[data-action="removeMissionary"]').forEach(b=> b.addEventListener('click', ()=> removeMissionaryAdmin(b.getAttribute('data-id'))));
     root.querySelectorAll('[data-action="resetAdminPassword"]').forEach(b=> b.addEventListener('click', ()=> resetAdminPassword(b.getAttribute('data-id'))));
     root.querySelectorAll('[data-action="resetMissionaryPassword"]').forEach(b=> b.addEventListener('click', ()=> resetMissionaryPassword(b.getAttribute('data-id'))));
+    root.querySelectorAll('[data-action="toggleInCharge"]').forEach(cb=> cb.addEventListener('change', ()=> toggleInCharge(cb.getAttribute('data-id'))));
+    root.querySelectorAll('input.ys-input').forEach(inp=> inp.addEventListener('change', ()=> onYtdInputChange(inp)));
+    root.querySelectorAll('[data-action="ytdResetRow"]').forEach(b=> b.addEventListener('click', ()=> resetYtdRow(b.getAttribute('data-id'))));
     root.querySelectorAll('[data-action="toggleRL"]').forEach(cb=> cb.addEventListener('change', ()=> toggleRegionalLeader(cb.getAttribute('data-id'))));
     root.querySelectorAll('[data-action="assignRL"]').forEach(sel=> sel.addEventListener('change', e=> assignRegionalLeader(sel.getAttribute('data-id'), e.target.value)));
 

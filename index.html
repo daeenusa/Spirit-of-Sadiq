@@ -145,6 +145,27 @@
   table.admin-table{width:100%; border-collapse:collapse; font-size:12.5px;}
   table.admin-table th{text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; color:var(--text-muted); padding:8px 7px; border-bottom:1px solid var(--border);}
   table.admin-table td{padding:8px 7px; border-bottom:1px solid var(--border); vertical-align:middle;}
+  .ysheet-wrap{overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
+  table.ysheet{border-collapse:separate; border-spacing:0; width:100%; min-width:760px; font-size:12.5px;}
+  table.ysheet th, table.ysheet td{padding:7px 6px; border-right:1px solid var(--border); border-bottom:1px solid var(--border); background:var(--surface); text-align:center; vertical-align:middle;}
+  table.ysheet th{font-size:11px; font-weight:700; line-height:1.25; background:var(--surface-alt); color:var(--text);}
+  table.ysheet .ys-title{background:var(--accent-soft); color:var(--accent-deep); font-weight:800; font-size:14px; text-align:left; padding:11px 12px;}
+  table.ysheet .ys-databand{background:var(--accent-deep); color:#fff; font-size:15px; font-weight:800; letter-spacing:.2px; padding:9px 8px;}
+  table.ysheet .ys-c1{position:sticky; left:0; z-index:2; width:36px; min-width:36px;}
+  table.ysheet .ys-c2{position:sticky; left:36px; z-index:2; min-width:128px; text-align:left; box-shadow:2px 0 0 var(--border);}
+  table.ysheet .ys-c3{min-width:96px;}
+  table.ysheet .ys-title span{display:block; position:sticky; left:12px; max-width:min(640px, calc(100vw - 90px)); white-space:normal; line-height:1.35;}
+  table.ysheet thead .ys-c1, table.ysheet thead .ys-c2{z-index:3;}
+  table.ysheet .ys-band td{background:var(--accent-soft); color:var(--accent-deep); font-weight:800; font-size:13px; text-align:left; padding:8px 10px; border-right:none;}
+  table.ysheet .ys-band span{display:inline-block; position:sticky; left:10px;}
+  table.ysheet .ys-band.ys-unassigned td{background:var(--surface-alt); color:var(--text-muted);}
+  table.ysheet .ys-sub td{font-weight:800; background:var(--surface-alt); border-top:2px solid var(--border);}
+  table.ysheet .ys-sub .ys-c1, table.ysheet .ys-sub .ys-c2{background:var(--surface-alt);}
+  table.ysheet .ys-total td{font-weight:800; background:var(--accent-deep); color:#fff; border-color:var(--accent-deep);}
+  table.ysheet .ys-total .ys-c1, table.ysheet .ys-total .ys-c2{background:var(--accent-deep);}
+  table.ysheet .ys-jam{font-size:11.5px; line-height:1.45; color:var(--text-muted);}
+  table.ysheet .ys-lead{color:var(--accent-deep); font-weight:700; font-size:11px;}
+  table.ysheet .ys-zero{color:var(--text-muted);}
   table.admin-table select{font-size:12px; padding:5px 6px; border-radius:6px; border:1px solid var(--border);}
   .import-instructions{font-size:12px; color:var(--text-muted); line-height:1.6; margin-bottom:10px;}
   .import-instructions code{background:var(--surface-alt); padding:1px 5px; border-radius:5px;}
@@ -267,51 +288,4 @@
     toast.id = 'sos-toast';
     toast.className = 'sos-toast';
     toast.textContent = msg;
-    document.body.appendChild(toast);
-    clearTimeout(window.__toastTimer);
-    window.__toastTimer = setTimeout(()=>{ toast.remove(); }, 1800);
-  }
-  function escapeHtml(s){
-    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-  function periodStartISO(period){
-    if(period==='month'){
-      const now = new Date();
-      return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
-    }
-    if(period==='quarter'){
-      const now = new Date();
-      const qStartMonth = Math.floor(now.getMonth()/3)*3;
-      return new Date(now.getFullYear(), qStartMonth, 1).toISOString().slice(0,10);
-    }
-    // Reporting week runs Wednesday through the following Tuesday — this way,
-    // when the Tuesday meeting happens, "this week" is the full week that just
-    // finished (including that Tuesday), not a brand-new empty one.
-    // (Day-level precision only — the app stores dates, not exact times.)
-    const now = new Date();
-    const day = now.getDay(); // 0=Sun..6=Sat, Wednesday=3
-    const daysSinceWednesday = (day - 3 + 7) % 7;
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysSinceWednesday);
-    return start.toISOString().slice(0,10);
-  }
-  function inCurrentMonth(dateStr){
-    if(!dateStr) return false;
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
-    const end = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
-    return dateStr >= start && dateStr <= end;
-  }
-
-  // ---------- storage adapter: Google Apps Script (shared) + localStorage (personal "who am I") ----------
-
-  const API_URL = 'https://script.google.com/macros/s/AKfycbyUS7Q5K4qTJu0Q82rM9gXw9DzGfqbOSWVAPbrZODFjjEu9OzE7a-ZSyKYoiP0Itc4m/exec';
-
-  async function gsGetAll(){
-    try{
-      const res = await fetch(API_URL + '?action=getAll', { method: 'GET' });
-      if(!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      // A real response should have plenty of keys (missionaries, daeen-roster,
-      // contacts-m:*, contacts-d:*, ...). A near-empty object with a 200 OK
-      // usually means the request came back before the Sheet actually finished
-      // reading — not that the org genuinely
+ 

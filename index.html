@@ -248,6 +248,7 @@
     selectedAdminId: '',
     selectedMissionaryId: '',
     addingAdminMember: false,
+    changingMyPassword: false, cpOld: '', cpNew: '', cpConfirm: '',
     error: ''
   };
 
@@ -313,5 +314,4 @@
       // A real response should have plenty of keys (missionaries, daeen-roster,
       // contacts-m:*, contacts-d:*, ...). A near-empty object with a 200 OK
       // usually means the request came back before the Sheet actually finished
-      // reading — not that the org genuinely has no data.
-      if(Object.keys(data||{}).length < 2) throw new E
+      // reading — not that the org genuinely

@@ -173,6 +173,11 @@
   table.ysheet .ys-input:focus{outline:2px solid var(--accent); outline-offset:1px; border-style:solid;}
   table.ysheet .ys-input.ys-edited{background:var(--accent-soft); font-weight:700; border-style:solid;}
   table.ysheet .ys-reset{font-size:11px; margin-top:2px;}
+  .ys-nav{display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:14px;}
+  .ys-nav select{font:inherit; font-size:14px; font-weight:700; color:var(--accent-deep); padding:9px 12px; border:1px solid var(--border); border-radius:10px; background:var(--surface); min-width:0; flex:0 1 260px;}
+  .ys-arrow{width:40px; height:40px; border-radius:50%; border:1px solid var(--border); background:var(--surface); color:var(--accent-deep); font-size:22px; line-height:1; cursor:pointer; padding:0; flex:none;}
+  .ys-arrow:hover:not(:disabled){background:var(--accent-soft); border-color:var(--accent);}
+  .ys-arrow:disabled{opacity:.35; cursor:default;}
   table.admin-table select{font-size:12px; padding:5px 6px; border-radius:6px; border:1px solid var(--border);}
   .import-instructions{font-size:12px; color:var(--text-muted); line-height:1.6; margin-bottom:10px;}
   .import-instructions code{background:var(--surface-alt); padding:1px 5px; border-radius:5px;}
@@ -276,7 +281,7 @@
     selectedAdminId: '',
     selectedMissionaryId: '',
     addingAdminMember: false,
-    ytdOverrides: {},
+    ytdOverrides: {}, ytdMonthOverrides: {}, ytdSnapshots: {}, ytdView: 'ytd',
     changingMyPassword: false, cpOld: '', cpNew: '', cpConfirm: '',
     error: ''
   };
@@ -449,8 +454,10 @@
     if(kv['missionaries']){ try{ state.missionaries = JSON.parse(kv['missionaries']); }catch(e){ state.missionaries = []; } }
     if(kv['daeen-roster']){ try{ state.daeenRoster = JSON.parse(kv['daeen-roster']); }catch(e){ state.daeenRoster = []; } }
     if(kv['stage-labels']){ try{ state.stageLabels = JSON.parse(kv['stage-labels']); }catch(e){} }
-    state.ytdOverrides = {};
+    state.ytdOverrides = {}; state.ytdMonthOverrides = {}; state.ytdSnapshots = {};
     if(kv['ytd-overrides']){ try{ state.ytdOverrides = JSON.parse(kv['ytd-overrides']) || {}; }catch(e){ state.ytdOverrides = {}; } }
+    if(kv['ytd-month-overrides']){ try{ state.ytdMonthOverrides = JSON.parse(kv['ytd-month-overrides']) || {}; }catch(e){ state.ytdMonthOverrides = {}; } }
+    if(kv['ytd-snapshots']){ try{ state.ytdSnapshots = JSON.parse(kv['ytd-snapshots']) || {}; }catch(e){ state.ytdSnapshots = {}; } }
 
     state.contactsM = {};
     state.groupReports = {};
@@ -466,9 +473,10 @@
 
     state.loading = false;
     render();
+    if(state.me && state.me.role === 'admin') setTimeout(captureYtdSnapshot, 2000);
   }
 
-  async function saveMe(m){ state.me = m; localSetMe(m); }
+  async function saveMe(m){ state.me = m; localSetMe(m); if(m && m.role === 'admin') setTimeout(captureYtdSnapshot, 2000); }
   async function saveAdmins(){ await gsSet('admins', JSON.stringify(state.admins)); }
   async function saveMissionaries(){ await gsSet('missionaries', JSON.stringify(state.missionaries)); }
   async function saveRoster(){ await gsSet('daeen-roster', JSON.stringify(state.daeenRoster)); }
@@ -667,7 +675,7 @@
     const daeenNotActive = totalDaeen - daeenActiveThisMonth;
 
     let html = '<div class="card">';
-    html += '<div class="eyebrow">Year to date</div>';
+    html += '<div class="eyebrow">Year to date · FY ' + fiscalYearLabel() + '</div>';
     html += '<div class="metric-grid">';
     html += metricTile(totalBaiatsYTD, "Total Bai\u2019ats");
     html += metricTile(totalContacts, 'Total contacts');
@@ -746,9 +754,19 @@
 
   const DAEEN_ANNUAL_GOAL = 1;
 
+  // "Year" means the fiscal year: July 1 through June 30. In October 2026 that
+  // is July 1, 2026 to June 30, 2027 (FY 2026–27), and it rolls over by itself.
+  function fiscalYearStartYear(){
+    const now = new Date();
+    return now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+  }
+  function fiscalYearStartISO(){ return fiscalYearStartYear() + '-07-01'; }
+  function fiscalYearEndISO(){ return (fiscalYearStartYear() + 1) + '-06-30'; }
+  function fiscalYearLabel(){ const y = fiscalYearStartYear(); return y + '–' + String(y + 1).slice(2); }
   function inCurrentYear(dateStr){
     if(!dateStr) return false;
-    return dateStr.slice(0,4) === String(new Date().getFullYear());
+    const d = String(dateStr).slice(0,10);
+    return d >= fiscalYearStartISO() && d <= fiscalYearEndISO();
   }
 
   function baiatsYTDForMissionary(missionaryId){
@@ -773,7 +791,9 @@
   // appear automatically as time passes — nothing to update by hand.
   const BAIAT_TRACKING_START = '2026-08';
   function monthsSinceTrackingStart(){
-    const [startY, startM] = BAIAT_TRACKING_START.split('-').map(Number);
+    // Months shown start at the later of: when tracking began, or the start of this fiscal year.
+    const fyStartMonth = fiscalYearStartISO().slice(0,7);
+    const [startY, startM] = (BAIAT_TRACKING_START > fyStartMonth ? BAIAT_TRACKING_START : fyStartMonth).split('-').map(Number);
     const now = new Date();
     const endY = now.getFullYear(), endM = now.getMonth()+1;
     const months = [];
@@ -1966,7 +1986,7 @@
 
     // ----- Daeen annual Bai'at goals -----
     const daeenMet = rosterC.filter(d=>daeenMetAnnualGoal(d.id)).length;
-    html += '<div class="card"><h2>Daeen Bai\'at goals (1 per year, year to date)</h2>';
+    html += '<div class="card"><h2>Daeen Bai\'at goals (1 per fiscal year, July\u2013June)</h2>';
     html += progressBarHtml(daeenMet, rosterC.length, 'Daeen who have reached their goal');
     html += '</div>';
 
@@ -2102,7 +2122,7 @@
     const activeDaeenCount = reportDaeen.filter(d=>isDaeenActive(d.id)).length;
 
     let html = '<div class="card"><h2>This ' + periodWord + ' vs. year to date</h2>';
-    html += '<div class="muted" style="margin-bottom:10px;">Reporting ' + periodWord + ': ' + periodStart + ' through ' + periodEndDate.toISOString().slice(0,10) + (isWeek?' (resets Wednesdays)':'') + '</div>';
+    html += '<div class="muted" style="margin-bottom:10px;">Reporting ' + periodWord + ': ' + periodStart + ' through ' + periodEndDate.toISOString().slice(0,10) + (isWeek?' (resets Wednesdays)':'') + ' · Year to date = fiscal year since ' + fiscalYearStartISO() + '</div>';
     html += '<div class="metric-grid">';
     html += metricTileColored(reportedCount, reportMissionaries.length, 'Missionaries reported this ' + periodWord);
     html += metricTile(baiatsThisPeriod + ' / ' + baiatsYearToDate, "Bai'ats this " + periodWord + " / year to date");
@@ -2423,7 +2443,7 @@
   }
 
   function reachedOutYTD(contactsList){
-    const yearStart = new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10);
+    const yearStart = fiscalYearStartISO();
     const reached = (contactsList||[]).filter(c=> (c.lastContact && c.lastContact>=yearStart) || (c.history||[]).some(h=>h>=yearStart));
     return {reached: reached.length, total: (contactsList||[]).length};
   }
@@ -2499,13 +2519,74 @@
     };
   }
   const YTD_FIELDS = ['target','baiats','daeen','daeenContacts','personalContacts','baiatsPersonal','baiatsDaeen'];
+  const YTD_SNAP_FIELDS = ['daeen','daeenContacts','personalContacts'];
+  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   function ytdHasOverride(o, k){ return !!o && o[k] !== undefined && o[k] !== null && o[k] !== ''; }
+  function currentYM(){ const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
+  function ymLabel(ym){ const p = ym.split('-').map(Number); return MONTH_NAMES[p[1]-1] + ' ' + p[0]; }
+  // Views on this tab: 'ytd' (fiscal year to date) or a month like '2026-09'.
+  // Newest first; goes back as far as there is any Bai'at, saved figure or tracking start.
+  function ytdMonthList(){
+    const cur = currentYM();
+    let earliest = cur;
+    const consider = ym => { if(/^\d{4}-\d{2}$/.test(ym) && ym >= '2015-01' && ym < earliest) earliest = ym; };
+    consider(BAIAT_TRACKING_START);
+    Object.keys(state.ytdSnapshots || {}).forEach(consider);
+    Object.keys(state.ytdMonthOverrides || {}).forEach(consider);
+    const scan = lists => Object.keys(lists || {}).forEach(id=> (lists[id] || []).forEach(c=>{ if(c.stage===3 && c.baiatDate) consider(String(c.baiatDate).slice(0,7)); }));
+    scan(state.contactsM); scan(state.contactsD);
+    const out = [];
+    let y = Number(cur.slice(0,4)), m = Number(cur.slice(5,7));
+    while(true){
+      const ym = y + '-' + String(m).padStart(2,'0');
+      out.push(ym);
+      if(ym <= earliest) break;
+      m--; if(m < 1){ m = 12; y--; }
+      if(out.length > 240) break;
+    }
+    return out;
+  }
+  function ytdViewOptions(){
+    const opts = [{key:'ytd', label:'Year to date · FY ' + fiscalYearLabel()}];
+    ytdMonthList().forEach(ym=> opts.push({key:ym, label: ymLabel(ym)}));
+    return opts;
+  }
+  function ytdView(){
+    const v = state.ytdView || 'ytd';
+    return (v === 'ytd' || ytdMonthList().indexOf(v) >= 0) ? v : 'ytd';
+  }
+  function ytdOverrideFor(view, mid){
+    if(view === 'ytd') return (state.ytdOverrides || {})[mid] || null;
+    return ((state.ytdMonthOverrides || {})[view] || {})[mid] || null;
+  }
+  function ytdOverrideBucket(view, create){
+    if(view === 'ytd'){ if(create && !state.ytdOverrides) state.ytdOverrides = {}; return state.ytdOverrides || null; }
+    state.ytdMonthOverrides = state.ytdMonthOverrides || {};
+    if(create && !state.ytdMonthOverrides[view]) state.ytdMonthOverrides[view] = {};
+    return state.ytdMonthOverrides[view] || null;
+  }
+  // What the app itself counts for a missionary in a given view.
+  function ytdBaseRow(m, view){
+    const live = ytdRowData(m);
+    if(view === 'ytd') return live;
+    const inMonth = c => c.stage===3 && c.baiatDate && String(c.baiatDate).slice(0,7) === view;
+    const p = (state.contactsM[m.id] || []).filter(inMonth).length;
+    let d = 0;
+    state.daeenRoster.filter(x=>x.missionaryId===m.id).forEach(x=>{ (state.contactsD[x.id] || []).forEach(c=>{ if(inMonth(c)) d++; }); });
+    const out = {target: m.target || 10, baiats: p + d, baiatsPersonal: p, baiatsDaeen: d, jamaats: live.jamaats, daeen: null, daeenContacts: null, personalContacts: null};
+    if(view === currentYM()){
+      out.daeen = live.daeen; out.daeenContacts = live.daeenContacts; out.personalContacts = live.personalContacts;
+    } else {
+      const snap = ((state.ytdSnapshots || {})[view] || {})[m.id];
+      if(snap){ out.daeen = snap.daeen; out.daeenContacts = snap.daeenContacts; out.personalContacts = snap.personalContacts; }
+    }
+    return out;
+  }
   // Numbers typed in by National Access apply to unassigned missionaries only.
-  // Anything not typed in falls back to what the app counts.
-  function ytdEffectiveRow(m, unassigned){
-    const r = ytdRowData(m);
-    const out = Object.assign({}, r, {edited:false, over:{}});
-    const o = unassigned ? ((state.ytdOverrides || {})[m.id] || null) : null;
+  // Anything not typed in falls back to what the app counts (or was saved for that month).
+  function ytdEffectiveRow(m, unassigned, view){
+    const out = Object.assign({}, ytdBaseRow(m, view), {edited:false, over:{}});
+    const o = unassigned ? ytdOverrideFor(view, m.id) : null;
     if(o){
       ['target','daeen','daeenContacts','personalContacts','baiatsPersonal','baiatsDaeen'].forEach(k=>{
         if(ytdHasOverride(o,k)){ out[k] = Number(o[k]); out.over[k] = true; }
@@ -2518,10 +2599,14 @@
   }
   function ytdTotals(list){
     const t = {};
-    YTD_FIELDS.forEach(k=>{ t[k] = list.reduce((s,r)=>s+(Number(r[k])||0), 0); });
+    YTD_FIELDS.forEach(k=>{
+      const known = list.filter(r=> r[k] !== null && r[k] !== undefined);
+      t[k] = known.length ? known.reduce((s,r)=>s+Number(r[k]), 0) : (YTD_SNAP_FIELDS.indexOf(k) >= 0 && list.length ? null : 0);
+    });
     return t;
   }
-  function ytdModel(){
+  function ytdModel(view){
+    view = view || ytdView();
     const leaders = state.missionaries.filter(m=>m.isRegionalLeader)
       .sort((a,b)=> regionSortKey(a).localeCompare(regionSortKey(b)) || a.name.localeCompare(b.name));
     const coveredIds = new Set();
@@ -2539,26 +2624,35 @@
       // The Missionary In-Charge keeps full access but is left out of the data.
       const rows = g.team.filter(m=>!m.isInCharge).map(m=>{
         n++;
-        const r = ytdEffectiveRow(m, g.unassigned);
+        const r = ytdEffectiveRow(m, g.unassigned, view);
         all.push(r);
         return {m, r, n, lead: !g.unassigned && m.id===g.leaderId};
       });
       if(!rows.length) return;
       groups.push({id:g.id, label:g.label, unassigned:g.unassigned, rows, totals: ytdTotals(rows.map(x=>x.r))});
     });
-    return {groups, totals: ytdTotals(all), count: all.length, excluded: state.missionaries.filter(m=>m.isInCharge).length};
+    return {view, groups, totals: ytdTotals(all), count: all.length, excluded: state.missionaries.filter(m=>m.isInCharge).length};
   }
   function ytdRangeText(){
     const now = new Date();
     const fmt = d => d.toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'});
-    return fmt(new Date(now.getFullYear(), 0, 1)) + ' – ' + fmt(now);
+    return fmt(new Date(fiscalYearStartYear(), 6, 1)) + ' – ' + fmt(now);
   }
+  function ytdTitleText(view){
+    return view === 'ytd'
+      ? 'Missionaries — Year-to-Date Tabligh / Bai’at Data (' + ytdRangeText() + ')'
+      : 'Missionaries — ' + ymLabel(view) + ' Tabligh / Bai’at Data';
+  }
+  function ytdBandText(view){ return view === 'ytd' ? 'Year to Date — FY ' + fiscalYearLabel() : ymLabel(view) + ' Data'; }
+  function ytdBaiatHeader(view){ return view === 'ytd' ? 'Bai’ats year to date' : 'Bai’ats during the month'; }
   function ytdSheetTable(){
     const model = ytdModel();
+    const view = model.view;
     const rows = [];
-    rows.push(['Missionaries — Year-to-Date Tabligh / Bai’at Data (' + ytdRangeText() + ')']);
-    rows.push(['No.','Name of Missionary','Jama’ats','(Personal) Bai’at Target','Bai’ats year to date','How many Daeen?','How many contacts does your Daeen have?','How many personal contacts does the Missionary have?','Bai’ats (by Missionary)','Bai’ats (by Daeen)']);
-    const line = (a, r)=> a.concat(YTD_FIELDS.map(k=>r[k]));
+    rows.push([ytdTitleText(view)]);
+    rows.push(['No.','Name of Missionary','Jama’ats','(Personal) Bai’at Target', ytdBaiatHeader(view),'How many Daeen?','How many contacts does your Daeen have?','How many personal contacts does the Missionary have?','Bai’ats (by Missionary)','Bai’ats (by Daeen)']);
+    const val = v => (v === null || v === undefined) ? '' : v;
+    const line = (a, r)=> a.concat(YTD_FIELDS.map(k=>val(r[k])));
     model.groups.forEach(g=>{
       rows.push(['', g.label]);
       g.rows.forEach(x=> rows.push(line([x.n, x.m.name + (x.lead ? ' [Lead]' : ''), x.r.jamaats.join(', ')], x.r)));
@@ -2592,12 +2686,57 @@
     document.body.removeChild(ta);
   }
   function downloadYtdCsv(){
+    const view = ytdView();
     const blob = new Blob(['﻿' + ytdExportText('csv')], {type:'text/csv;charset=utf-8'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'missionaries-ytd-' + todayStr() + '.csv';
+    a.href = url; a.download = (view === 'ytd' ? 'missionaries-ytd-' + todayStr() : 'missionaries-' + view) + '.csv';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=> URL.revokeObjectURL(url), 1000);
+  }
+  function ytdStep(delta){
+    const opts = ytdViewOptions();
+    const i = opts.findIndex(o=>o.key === ytdView());
+    const j = Math.min(opts.length - 1, Math.max(0, i + delta));
+    state.ytdView = opts[j].key;
+    render();
+  }
+
+  // ----- monthly snapshots: Daeen and contact totals, saved so past months can be looked at later -----
+  // Nothing here is ever cleared, and the fiscal-year rollover doesn't touch it.
+  function ytdSnapshotRecord(){
+    const rec = {_at: todayStr()};
+    state.missionaries.forEach(m=>{
+      const r = ytdRowData(m);
+      rec[m.id] = {daeen: r.daeen, daeenContacts: r.daeenContacts, personalContacts: r.personalContacts};
+    });
+    return rec;
+  }
+  function ytdSnapshotTotal(rec){
+    let t = 0;
+    Object.keys(rec || {}).forEach(k=>{ if(k === '_at') return; const v = rec[k] || {}; t += (v.daeen||0) + (v.daeenContacts||0) + (v.personalContacts||0); });
+    return t;
+  }
+  let ytdSnapBusy = false;
+  async function captureYtdSnapshot(){
+    if(ytdSnapBusy || !state.me || state.me.role !== 'admin' || !state.missionaries.length) return;
+    const ym = currentYM(), today = todayStr();
+    const have = (state.ytdSnapshots || {})[ym];
+    if(have && have._at === today) return;
+    ytdSnapBusy = true;
+    try{
+      const rec = ytdSnapshotRecord();
+      const raw = await gsGetFresh('ytd-snapshots');
+      let fresh = state.ytdSnapshots || {};
+      if(raw){ try{ fresh = JSON.parse(raw) || {}; }catch(e){} }
+      const existing = fresh[ym];
+      if(existing && existing._at >= today){ state.ytdSnapshots = fresh; return; }
+      // A half-loaded read must never overwrite a good month: ignore a sudden big drop.
+      if(existing && ytdSnapshotTotal(existing) > 20 && ytdSnapshotTotal(rec) < ytdSnapshotTotal(existing) * 0.7) return;
+      fresh[ym] = rec;
+      const ok = await gsSet('ytd-snapshots', JSON.stringify(fresh));
+      if(ok) state.ytdSnapshots = fresh;
+    } finally { ytdSnapBusy = false; }
   }
 
   // ----- editing the unassigned rows -----
@@ -2608,35 +2747,41 @@
   }
   // Saves go one at a time, and each re-reads the latest shared copy first,
   // so tabbing quickly through cells (or two people editing) never overwrites anything.
-  function persistYtdOverride(mid, field, val){
+  // Year-to-date numbers and each month's numbers are stored separately and are never reset.
+  function persistYtdOverride(view, mid, field, val){
     setYtdStatus('Saving…');
+    const key = view === 'ytd' ? 'ytd-overrides' : 'ytd-month-overrides';
     ytdSaveChain = ytdSaveChain.then(async ()=>{
-      const raw = await gsGetFresh('ytd-overrides');
-      let fresh = state.ytdOverrides || {};
+      const raw = await gsGetFresh(key);
+      let fresh = view === 'ytd' ? (state.ytdOverrides || {}) : (state.ytdMonthOverrides || {});
       if(raw){ try{ fresh = JSON.parse(raw) || {}; }catch(e){} }
-      if(field === null){ delete fresh[mid]; }
+      let bucket = fresh;
+      if(view !== 'ytd') bucket = fresh[view] = fresh[view] || {};
+      if(field === null){ delete bucket[mid]; }
       else {
-        const o = fresh[mid] = fresh[mid] || {};
+        const o = bucket[mid] = bucket[mid] || {};
         if(val === null) delete o[field]; else o[field] = val;
-        if(!Object.keys(o).length) delete fresh[mid];
+        if(!Object.keys(o).length) delete bucket[mid];
       }
-      const ok = await gsSet('ytd-overrides', JSON.stringify(fresh));
+      if(view !== 'ytd' && !Object.keys(bucket).length) delete fresh[view];
+      const ok = await gsSet(key, JSON.stringify(fresh));
       setYtdStatus(ok ? 'Saved' : 'Could not save — try again');
     });
     return ytdSaveChain;
   }
   function refreshYtdTotals(forceId){
     const model = ytdModel();
+    const show = v => (v === null || v === undefined) ? '—' : v;
     model.groups.forEach(g=>{
       YTD_FIELDS.forEach(k=>{
         const el = document.querySelector('[data-ytot="' + g.id + '|' + k + '"]');
-        if(el) el.textContent = g.totals[k];
+        if(el) el.textContent = show(g.totals[k]);
       });
       if(g.unassigned) g.rows.forEach(x=>{
         YTD_FIELDS.forEach(k=>{
           const inp = document.getElementById('ys_' + x.m.id + '_' + k);
           if(!inp) return;
-          if(document.activeElement !== inp || inp.id === forceId) inp.value = x.r[k];
+          if(document.activeElement !== inp || inp.id === forceId) inp.value = (x.r[k] === null || x.r[k] === undefined) ? '' : x.r[k];
           inp.classList.toggle('ys-edited', !!x.r.over[k]);
         });
         const rb = document.querySelector('[data-yreset="' + x.m.id + '"]');
@@ -2645,10 +2790,11 @@
     });
     YTD_FIELDS.forEach(k=>{
       const el = document.querySelector('[data-ytot="all|' + k + '"]');
-      if(el) el.textContent = model.totals[k];
+      if(el) el.textContent = show(model.totals[k]);
     });
   }
   function onYtdInputChange(inp){
+    const view = ytdView();
     const mid = inp.getAttribute('data-ymid'), field = inp.getAttribute('data-yfield');
     const text = inp.value.trim();
     let val = null;
@@ -2657,18 +2803,22 @@
       if(!isFinite(num) || num < 0){ showToast('Enter a whole number, 0 or higher'); refreshYtdTotals(inp.id); return; }
       val = num;
     }
-    state.ytdOverrides = state.ytdOverrides || {};
-    const o = state.ytdOverrides[mid] = state.ytdOverrides[mid] || {};
+    const bucket = ytdOverrideBucket(view, true);
+    const o = bucket[mid] = bucket[mid] || {};
     if(val === null) delete o[field]; else o[field] = val;
-    if(!Object.keys(o).length) delete state.ytdOverrides[mid];
+    if(!Object.keys(o).length) delete bucket[mid];
+    if(view !== 'ytd' && !Object.keys(bucket).length) delete state.ytdMonthOverrides[view];
     refreshYtdTotals(val === null ? inp.id : '');
-    persistYtdOverride(mid, field, val);
+    persistYtdOverride(view, mid, field, val);
   }
   function resetYtdRow(mid){
-    if(!confirm('Clear the numbers typed in for this missionary and go back to what the app counts?')) return;
-    if(state.ytdOverrides) delete state.ytdOverrides[mid];
+    if(!confirm('Clear the numbers typed in for this missionary and go back to what the app has?')) return;
+    const view = ytdView();
+    const bucket = ytdOverrideBucket(view, false);
+    if(bucket) delete bucket[mid];
+    if(view !== 'ytd' && bucket && !Object.keys(bucket).length) delete state.ytdMonthOverrides[view];
     render();
-    persistYtdOverride(mid, null, null);
+    persistYtdOverride(view, mid, null, null);
   }
   async function toggleInCharge(id){
     await mutateSharedMissionaries(fresh=>{
@@ -2680,16 +2830,23 @@
   function renderAdminYtdSheet(){
     const COLS = 10;
     const model = ytdModel();
-    const ycell = (v)=> '<td>' + (v===0 ? '<span class="ys-zero">0</span>' : v) + '</td>';
-    const yinput = (mid, k, r)=> '<td class="ys-edit"><input type="number" min="0" step="1" inputmode="numeric" class="ys-input' + (r.over[k] ? ' ys-edited' : '') + '" id="ys_' + mid + '_' + k + '" data-ymid="' + mid + '" data-yfield="' + k + '" value="' + r[k] + '"></td>';
-    const totalCells = (id, t)=> YTD_FIELDS.map(k=> '<td data-ytot="' + id + '|' + k + '">' + t[k] + '</td>').join('');
+    const view = model.view;
+    const isYtd = view === 'ytd';
+    const ycell = (v)=> '<td>' + (v === null || v === undefined ? '<span class="ys-zero">—</span>' : (v === 0 ? '<span class="ys-zero">0</span>' : v)) + '</td>';
+    const yinput = (mid, k, r)=> '<td class="ys-edit"><input type="number" min="0" step="1" inputmode="numeric" placeholder="—" class="ys-input' + (r.over[k] ? ' ys-edited' : '') + '" id="ys_' + mid + '_' + k + '" data-ymid="' + mid + '" data-yfield="' + k + '" value="' + ((r[k] === null || r[k] === undefined) ? '' : r[k]) + '"></td>';
+    const totalCells = (id, t)=> YTD_FIELDS.map(k=> '<td data-ytot="' + id + '|' + k + '">' + ((t[k] === null || t[k] === undefined) ? '—' : t[k]) + '</td>').join('');
 
+    const opts = ytdViewOptions();
+    const idx = opts.findIndex(o=>o.key === view);
     let html = '<div class="card">';
+    html += '<div class="ys-nav"><button class="ys-arrow" id="ytdPrev" aria-label="Earlier month" ' + (idx >= opts.length-1 ? 'disabled' : '') + '>‹</button>';
+    html += '<select id="ytdViewSelect" aria-label="Choose a month or year to date">' + opts.map(o=> '<option value="' + o.key + '"' + (o.key===view?' selected':'') + '>' + escapeHtml(o.label) + '</option>').join('') + '</select>';
+    html += '<button class="ys-arrow" id="ytdNext" aria-label="Later month" ' + (idx <= 0 ? 'disabled' : '') + '>›</button></div>';
     html += '<div class="ysheet-wrap"><table class="ysheet"><thead>';
-    html += '<tr><th class="ys-title" colspan="' + COLS + '"><span>Missionaries — Year-to-Date Tabligh / Bai’at Data (' + escapeHtml(ytdRangeText()) + ')</span></th></tr>';
-    html += '<tr><th class="ys-c1" style="background:var(--surface);"></th><th class="ys-c2" style="background:var(--surface);"></th><th colspan="2" style="background:var(--surface);"></th><th class="ys-databand" colspan="6">Year to Date — ' + new Date().getFullYear() + '</th></tr>';
+    html += '<tr><th class="ys-title" colspan="' + COLS + '"><span>' + escapeHtml(ytdTitleText(view)) + '</span></th></tr>';
+    html += '<tr><th class="ys-c1" style="background:var(--surface);"></th><th class="ys-c2" style="background:var(--surface);"></th><th colspan="2" style="background:var(--surface);"></th><th class="ys-databand" colspan="6">' + escapeHtml(ytdBandText(view)) + '</th></tr>';
     html += '<tr><th class="ys-c1">No.</th><th class="ys-c2">Name of Missionary</th><th class="ys-c3">Jama’ats</th><th>(Personal) Bai’at Target</th>';
-    html += '<th>Bai’ats year to date</th><th>How many Daeen?</th><th>How many contacts does your Daeen have?</th><th>How many personal contacts does the Missionary have?</th><th>Bai’ats (by Missionary)</th><th>Bai’ats (by Daeen)</th></tr>';
+    html += '<th>' + ytdBaiatHeader(view) + '</th><th>How many Daeen?</th><th>How many contacts does your Daeen have?</th><th>How many personal contacts does the Missionary have?</th><th>Bai’ats (by Missionary)</th><th>Bai’ats (by Daeen)</th></tr>';
     html += '</thead><tbody>';
 
     if(!model.groups.length) html += '<tr><td colspan="' + COLS + '" style="text-align:center; padding:18px; color:var(--text-muted);">No missionaries yet.</td></tr>';
@@ -2706,7 +2863,8 @@
           YTD_FIELDS.forEach(k=> html += yinput(m.id, k, r));
         } else {
           html += '<td>' + r.target + '</td>';
-          html += '<td style="font-weight:800; color:' + (r.baiats>=r.target && r.baiats>0 ? 'var(--good)' : (r.baiats>0 ? 'var(--text)' : 'var(--text-muted)')) + ';">' + r.baiats + '</td>';
+          const goalMet = isYtd && r.baiats >= r.target && r.baiats > 0;
+          html += '<td style="font-weight:800; color:' + (goalMet ? 'var(--good)' : (r.baiats>0 ? 'var(--text)' : 'var(--text-muted)')) + ';">' + r.baiats + '</td>';
           html += ycell(r.daeen) + ycell(r.daeenContacts) + ycell(r.personalContacts) + ycell(r.baiatsPersonal) + ycell(r.baiatsDaeen);
         }
         html += '</tr>';
@@ -2718,10 +2876,18 @@
     }
     html += '</tbody></table></div>';
     html += '<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:12px;"><button class="primary" id="ytdCopyBtn">Copy for Google Sheets</button><button class="ghost" id="ytdCsvBtn">Download CSV</button><span id="ytdSaveStatus" class="muted" style="font-size:12px;"></span></div>';
-    html += '<div class="muted" style="margin-top:10px; font-size:12px; line-height:1.5;">Bai’ats are counted from January 1 to today, across the missionary’s own contacts and their Daeen’s contacts. Daeen and contact numbers are current totals. Jama’ats are taken from each missionary’s Daeen. A green Bai’at count means the personal target has been met.';
-    html += ' Unassigned rows: type over any number to replace what the app counts (the dashed boxes); clear a box to go back to the app’s number. These typed numbers appear on this page and in the copy and CSV only.';
+    html += '<div class="muted" style="margin-top:10px; font-size:12px; line-height:1.5;">';
+    if(isYtd){
+      html += 'Bai’ats are counted from July 1 (the start of the fiscal year) to today, across the missionary’s own contacts and their Daeen’s contacts. Daeen and contact numbers are current totals. Jama’ats are taken from each missionary’s Daeen. A green Bai’at count means the personal target has been met.';
+    } else {
+      html += 'Bai’ats are counted by their Bai’at date within ' + ymLabel(view) + ', across the missionary’s own contacts and their Daeen’s contacts.';
+      if(view === currentYM()) html += ' Daeen and contact numbers for the current month are live.';
+      else html += ' Daeen and contact numbers come from the totals the app saves automatically whenever National Access opens it (the latest one in that month). A dash means none were saved for that month.';
+      html += ' Jama’ats are taken from each missionary’s Daeen today.';
+    }
+    html += ' Unassigned rows: type over any number to replace it (the dashed boxes); clear a box to go back to the app’s number. Typed numbers are kept separately for year to date and for each month, are never reset, and appear on this page and in the copy and CSV only.';
     if(model.excluded) html += ' ' + (model.excluded===1 ? '1 missionary is' : model.excluded + ' missionaries are') + ' marked In-Charge and left out of this page.';
-    html += ' Scroll sideways on a phone — the name stays in view.</div>';
+    html += ' Use the arrows to move between months. Scroll sideways on a phone — the name stays in view.</div>';
     html += '</div>';
     return html;
   }
@@ -2771,7 +2937,9 @@
       contactsD: state.contactsD,
       groupReports: state.groupReports,
       stageLabels: state.stageLabels,
-      ytdOverrides: state.ytdOverrides
+      ytdOverrides: state.ytdOverrides,
+      ytdMonthOverrides: state.ytdMonthOverrides,
+      ytdSnapshots: state.ytdSnapshots
     };
   }
   function exportBackup(){
@@ -2795,6 +2963,8 @@
     state.groupReports = data.groupReports || {};
     if(data.stageLabels) state.stageLabels = data.stageLabels;
     state.ytdOverrides = data.ytdOverrides || {};
+    state.ytdMonthOverrides = data.ytdMonthOverrides || {};
+    state.ytdSnapshots = data.ytdSnapshots || {};
 
     await saveAdmins();
     await saveMissionaries();
@@ -2804,6 +2974,8 @@
     for(const id in state.groupReports) await saveGroupReports(id);
     await gsSet('stage-labels', JSON.stringify(state.stageLabels));
     await gsSet('ytd-overrides', JSON.stringify(state.ytdOverrides));
+    await gsSet('ytd-month-overrides', JSON.stringify(state.ytdMonthOverrides));
+    await gsSet('ytd-snapshots', JSON.stringify(state.ytdSnapshots));
 
     state.error = '';
     render();
@@ -3151,12 +3323,18 @@
     const tabReport = document.getElementById('tabReport');
     if(tabReport) tabReport.addEventListener('click', ()=>{ state.tab='report'; render(); });
     const tabReportMonthly = document.getElementById('tabReportMonthly');
+    const ytdViewSelect = document.getElementById('ytdViewSelect');
+    if(ytdViewSelect) ytdViewSelect.addEventListener('change', e=>{ state.ytdView = e.target.value; render(); });
+    const ytdPrev = document.getElementById('ytdPrev');
+    if(ytdPrev) ytdPrev.addEventListener('click', ()=> ytdStep(1));
+    const ytdNext = document.getElementById('ytdNext');
+    if(ytdNext) ytdNext.addEventListener('click', ()=> ytdStep(-1));
     const ytdCopyBtn = document.getElementById('ytdCopyBtn');
     if(ytdCopyBtn) ytdCopyBtn.addEventListener('click', copyYtdForSheets);
     const ytdCsvBtn = document.getElementById('ytdCsvBtn');
     if(ytdCsvBtn) ytdCsvBtn.addEventListener('click', downloadYtdCsv);
     const tabYtdSheet = document.getElementById('tabYtdSheet');
-    if(tabYtdSheet) tabYtdSheet.addEventListener('click', ()=>{ state.tab='ytdsheet'; render(); });
+    if(tabYtdSheet) tabYtdSheet.addEventListener('click', ()=>{ state.tab='ytdsheet'; render(); captureYtdSnapshot(); });
     if(tabReportMonthly) tabReportMonthly.addEventListener('click', ()=>{ state.tab='reportMonthly'; render(); });
     const tabBaiats = document.getElementById('tabBaiats');
     if(tabBaiats) tabBaiats.addEventListener('click', ()=>{ state.tab='baiats'; render(); });

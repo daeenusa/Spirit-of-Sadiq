@@ -3358,7 +3358,12 @@
       rows = rows.filter(r=>r.c.stage === parseInt(state.contactsFilterStage));
     }
     if(state.searchText) rows = rows.filter(r=>r.c.name.toLowerCase().includes(state.searchText.toLowerCase()));
+    // Grouped by missionary (A\u2013Z, unassigned last); within each missionary,
+    // anyone not yet contacted this cycle comes first, then by stage, then name.
     rows.sort((a,b)=>{
+      if(!!a.missionaryId !== !!b.missionaryId) return a.missionaryId ? -1 : 1;
+      const mc = (a.missionary||'').localeCompare(b.missionary||'');
+      if(mc) return mc;
       const ea = engagedThisWk(a.c), eb = engagedThisWk(b.c);
       if(ea !== eb) return ea ? 1 : -1;
       if(a.c.stage !== b.c.stage) return a.c.stage - b.c.stage;
@@ -3377,7 +3382,7 @@
     if(!rows.length) html += '<div class="empty-state">No contacts match.</div>';
     else{
       html += '<table class="admin-table"><thead><tr><th>Name</th><th>Stage</th><th>Missionary</th><th>Via Daeen</th><th>This cycle</th></tr></thead><tbody>';
-      rows.slice(0,200).forEach(r=>{
+      rows.slice(0,500).forEach(r=>{
         const engaged = engagedThisWk(r.c);
         html += '<tr><td>' + escapeHtml(r.c.name) + '</td><td>' + escapeHtml(state.stageLabels[r.c.stage]) + '</td>';
         html += '<td><select data-action="reassignContactAdmin" data-contactid="' + r.c.id + '" data-sourcetype="' + r.sourceType + '" data-sourceid="' + r.sourceId + '"><option value="">unassigned</option>';
@@ -3387,7 +3392,7 @@
         html += '<td>' + (engaged?'<span class="ok-badge">contacted</span>':'<span class="flag-badge">not yet</span>') + '</td></tr>';
       });
       html += '</tbody></table>';
-      if(rows.length>200) html += '<div class="muted" style="margin-top:8px;">Showing the first 200 of ' + rows.length + ' — narrow with search or filters to find specific ones.</div>';
+      if(rows.length>500) html += '<div class="muted" style="margin-top:8px;">Showing the first 500 of ' + rows.length + ' — narrow with search or filters to find specific ones.</div>';
     }
     html += '</div>';
     return html;

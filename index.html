@@ -179,6 +179,11 @@
   .ys-arrow{width:40px; height:40px; border-radius:50%; border:1px solid var(--border); background:var(--surface); color:var(--accent-deep); font-size:22px; line-height:1; cursor:pointer; padding:0; flex:none;}
   .ys-arrow:hover:not(:disabled){background:var(--accent-soft); border-color:var(--accent);}
   .ys-arrow:disabled{opacity:.35; cursor:default;}
+  table.admin-table tr.group-row td{background:var(--surface-alt); border-top:2px solid var(--border); padding:9px 7px; font-weight:700; font-size:13px;}
+  .group-head{display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap;}
+  .group-actions{display:flex; gap:8px; flex-wrap:wrap;}
+  button.wa-btn{background:#128C7E; color:#fff; border:none; font-size:12px; font-weight:700; padding:7px 13px; border-radius:9px; cursor:pointer;}
+  button.wa-btn:hover{background:#0e7568;}
   table.admin-table select{font-size:12px; padding:5px 6px; border-radius:6px; border:1px solid var(--border);}
   .import-instructions{font-size:12px; color:var(--text-muted); line-height:1.6; margin-bottom:10px;}
   .import-instructions code{background:var(--surface-alt); padding:1px 5px; border-radius:5px;}
@@ -2830,11 +2835,11 @@
       navigator.clipboard.writeText(text).then(done).catch(()=> fallbackCopy(text, done));
     } else fallbackCopy(text, done);
   }
-  function fallbackCopy(text, done){
+  function fallbackCopy(text, done, failMsg){
     const ta = document.createElement('textarea');
     ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
     document.body.appendChild(ta); ta.select();
-    try{ document.execCommand('copy'); done(); }catch(e){ showToast('Could not copy — use Download CSV instead'); }
+    try{ document.execCommand('copy'); done(); }catch(e){ showToast(failMsg || 'Could not copy — use Download CSV instead'); }
     document.body.removeChild(ta);
   }
   function downloadYtdCsv(){
@@ -3340,11 +3345,11 @@
     return html + renderAdminDaeen();
   }
 
-  function renderAdminAllContacts(){
+  // All Contacts rows with the current filters applied, grouped by missionary
+  // (A\u2013Z, unassigned last). Shared by the table and the WhatsApp check-in message.
+  function allContactsRows(){
     const weekStartC = periodStartISO('week');
-    function engagedThisWk(c){
-      return (c.lastContact && c.lastContact>=weekStartC) || (c.history||[]).some(h=>h>=weekStartC);
-    }
+    const engagedThisWk = c => contactEngagedIn(c, weekStartC);
     let rows = [];
     countedMissionaries().forEach(m=>{
       (state.contactsM[m.id]||[]).forEach(c=> rows.push({c, missionaryId:m.id, missionary:m.name, via:'', sourceType:'m', sourceId:m.id}));
@@ -3358,8 +3363,8 @@
       rows = rows.filter(r=>r.c.stage === parseInt(state.contactsFilterStage));
     }
     if(state.searchText) rows = rows.filter(r=>r.c.name.toLowerCase().includes(state.searchText.toLowerCase()));
-    // Grouped by missionary (A\u2013Z, unassigned last); within each missionary,
-    // anyone not yet contacted this cycle comes first, then by stage, then name.
+    // Grouped by missionary; within each missionary, anyone not yet contacted
+    // this cycle comes first, then by stage, then name.
     rows.sort((a,b)=>{
       if(!!a.missionaryId !== !!b.missionaryId) return a.missionaryId ? -1 : 1;
       const mc = (a.missionary||'').localeCompare(b.missionary||'');
@@ -3369,6 +3374,75 @@
       if(a.c.stage !== b.c.stage) return a.c.stage - b.c.stage;
       return a.c.name.localeCompare(b.c.name);
     });
+    return rows;
+  }
+
+  function lastContactText(c){
+    const d = c.lastContact || '';
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'no contact logged yet';
+    const ago = -daysUntilISO(d);
+    return 'last contact ' + fmtShortDate(d) + (ago >= 0 ? ' (' + (ago===0 ? 'today' : ago===1 ? 'yesterday' : ago + ' days ago') + ')' : '');
+  }
+  // A ready-to-send check-in for one missionary, listing their contacts that
+  // aren't Bai\u2019at yet (respects the current Stage / search / not-contacted filters).
+  function missionaryCheckInMessage(missionaryId){
+    const m = state.missionaries.find(x=>x.id===missionaryId);
+    if(!m) return null;
+    const rows = allContactsRows().filter(r=>r.missionaryId===missionaryId && r.c.stage < 3);
+    if(!rows.length) return null;
+    const MAX = 30;   // keeps the WhatsApp link a sensible length
+    const first = (m.name||'').trim().split(/\s+/)[0] || m.name;
+    const ordered = [2,1,0].reduce((acc, st)=> acc.concat(rows.filter(r=>r.c.stage===st)), []);
+    const stagesPresent = [...new Set(ordered.map(r=>r.c.stage))];
+    const oneStage = stagesPresent.length === 1;
+    // "Ta'leem (Study)" -> "Ta'leem" for the sentence; the numbered list below keeps full detail.
+    const shortStage = st => String(state.stageLabels[st]).replace(/\s*\(.*\)\s*$/, '');
+    const lines = ['Assalamu Alaikum Murabbi ' + first + ' sahib,', ''];
+    const intro = oneStage
+      ? 'Based on the Tabligh tracker, we noticed that ' + (rows.length === 1 ? 'your contact is' : 'your ' + rows.length + ' contacts are') + ' still at the ' + shortStage(stagesPresent[0]) + ' stage:'
+      : 'Based on the Tabligh tracker, we noticed that ' + (rows.length === 1 ? 'your contact is' : 'your ' + rows.length + ' contacts are') + ' still at these stages:';
+    lines.push(intro, '');
+    let curStage = null, n = 0;
+    ordered.slice(0, MAX).forEach(r=>{
+      if(!oneStage && r.c.stage !== curStage){
+        if(curStage !== null) lines.push('');
+        curStage = r.c.stage; lines.push('*' + shortStage(curStage) + '*');
+      }
+      n++;
+      lines.push(n + '. ' + r.c.name + ' \u2014 ' + (r.via ? 'via Daeen ' + r.via + ' \u00b7 ' : '') + lastContactText(r.c) + (r.c.unresponsive ? ' \u00b7 marked unresponsive' : ''));
+    });
+    if(ordered.length > MAX) lines.push('\u2026and ' + (ordered.length - MAX) + ' more');
+    lines.push('', 'Could you kindly share an update on ' + (rows.length === 1 ? 'them' : 'each of them') + '?',
+      '\u2022 Where do things stand?',
+      '\u2022 Is there any help you need to bring them to Bai\u2019at?',
+      '\u2022 Do you need to connect with them again?',
+      '', 'Let\u2019s help them over the line, inshallah.',
+      '', 'Jazakallah Ahsanul Jaza, praying for your success.');
+    if(state.me && state.me.name) lines.push('', state.me.name);
+    return lines.join('\n');
+  }
+  function sendMissionaryWhatsApp(missionaryId){
+    const msg = missionaryCheckInMessage(missionaryId);
+    if(!msg){ showToast('No open contacts to ask about'); return; }
+    // No number is stored, so WhatsApp opens with the text ready and lets you pick the chat.
+    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank', 'noopener');
+  }
+  function copyMissionaryMessage(missionaryId){
+    const msg = missionaryCheckInMessage(missionaryId);
+    if(!msg){ showToast('No open contacts to ask about'); return; }
+    const done = ()=> showToast('Message copied');
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(msg).then(done).catch(()=> fallbackCopy(msg, done, 'Could not copy'));
+    else fallbackCopy(msg, done, 'Could not copy');
+  }
+
+  function renderAdminAllContacts(){
+    const weekStartC = periodStartISO('week');
+    const engagedThisWk = c => contactEngagedIn(c, weekStartC);
+    const rows = allContactsRows();
+    const openByMissionary = {};
+    rows.forEach(r=>{ if(r.c.stage < 3) openByMissionary[r.missionaryId] = (openByMissionary[r.missionaryId]||0) + 1; });
+    const totalByMissionary = {};
+    rows.forEach(r=>{ totalByMissionary[r.missionaryId] = (totalByMissionary[r.missionaryId]||0) + 1; });
 
     let html = '<div class="card"><h2>All Contacts (' + rows.length + ')</h2>';
     html += '<div class="muted" style="margin-bottom:10px;">Every contact, personal or via a Daeen, across the whole org — for reviewing who needs to move to the next stage. Change the Missionary dropdown to move a contact.</div>';
@@ -3382,8 +3456,19 @@
     if(!rows.length) html += '<div class="empty-state">No contacts match.</div>';
     else{
       html += '<table class="admin-table"><thead><tr><th>Name</th><th>Stage</th><th>Missionary</th><th>Via Daeen</th><th>This cycle</th></tr></thead><tbody>';
+      let lastGroup = null;
       rows.slice(0,500).forEach(r=>{
         const engaged = engagedThisWk(r.c);
+        if(r.missionaryId !== lastGroup){
+          lastGroup = r.missionaryId;
+          const tot = totalByMissionary[r.missionaryId] || 0;
+          html += '<tr class="group-row"><td colspan="5"><div class="group-head"><span>' + (r.missionaryId ? escapeHtml(r.missionary) : 'Unassigned') + ' <span class="muted" style="font-weight:600;">\u00b7 ' + tot + ' contact' + (tot===1?'':'s') + '</span></span>';
+          if(r.missionaryId && openByMissionary[r.missionaryId]){
+            html += '<span class="group-actions"><button class="wa-btn" data-action="waMissionary" data-mid="' + r.missionaryId + '" title="Open WhatsApp with a check-in message about these contacts">WhatsApp update request</button>';
+            html += '<button class="ghost" data-action="copyMissionaryMsg" data-mid="' + r.missionaryId + '">Copy message</button></span>';
+          }
+          html += '</div></td></tr>';
+        }
         html += '<tr><td>' + escapeHtml(r.c.name) + '</td><td>' + escapeHtml(state.stageLabels[r.c.stage]) + '</td>';
         html += '<td><select data-action="reassignContactAdmin" data-contactid="' + r.c.id + '" data-sourcetype="' + r.sourceType + '" data-sourceid="' + r.sourceId + '"><option value="">unassigned</option>';
         state.missionaries.forEach(m=> html += '<option value="' + m.id + '" ' + (m.id===r.missionaryId?'selected':'') + '>' + escapeHtml(m.name) + '</option>');
@@ -3798,6 +3883,8 @@
     const adminDaeenSearch = document.getElementById('adminDaeenSearch');
     if(adminDaeenSearch) adminDaeenSearch.addEventListener('input', e=>{ state.searchText = e.target.value; render(); });
     root.querySelectorAll('[data-action="reassign"]').forEach(sel=> sel.addEventListener('change', e=>{ reassignDaeen(sel.getAttribute('data-id'), e.target.value); }));
+    root.querySelectorAll('[data-action="waMissionary"]').forEach(b=> b.addEventListener('click', ()=> sendMissionaryWhatsApp(b.getAttribute('data-mid'))));
+    root.querySelectorAll('[data-action="copyMissionaryMsg"]').forEach(b=> b.addEventListener('click', ()=> copyMissionaryMessage(b.getAttribute('data-mid'))));
     root.querySelectorAll('[data-action="reassignContactAdmin"]').forEach(sel=> sel.addEventListener('change', e=>{
       reassignContactAdmin(sel.getAttribute('data-contactid'), sel.getAttribute('data-sourcetype'), sel.getAttribute('data-sourceid'), e.target.value);
     }));

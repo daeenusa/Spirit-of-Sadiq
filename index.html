@@ -182,6 +182,8 @@
   table.admin-table tr.group-row td{background:var(--surface-alt); border-top:2px solid var(--border); padding:9px 7px; font-weight:700; font-size:13px;}
   .group-head{display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap;}
   .group-actions{display:flex; gap:8px; flex-wrap:wrap;}
+  .table-scroll{overflow-x:auto; -webkit-overflow-scrolling:touch;}
+  @media (max-width:640px){ .group-head{position:sticky; left:0; max-width:calc(100vw - 84px);} }
   button.wa-btn{background:#128C7E; color:#fff; border:none; font-size:12px; font-weight:700; padding:7px 13px; border-radius:9px; cursor:pointer;}
   button.wa-btn:hover{background:#0e7568;}
   table.admin-table select{font-size:12px; padding:5px 6px; border-radius:6px; border:1px solid var(--border);}
@@ -3049,38 +3051,130 @@
     return html;
   }
 
-  function renderAdminDaeen(){
+  // ---- All Daeen: rows, per-Daeen contact summary, and the missionary check-in message ----
+  function daeenMissionaryName(id){
+    const m = state.missionaries.find(x=>x.id===id);
+    return m ? m.name : '';
+  }
+  // Daeen with the current filters applied, grouped by missionary (A-Z, unassigned last);
+  // within a missionary, anyone not yet contacted this cycle comes first.
+  function allDaeenRows(){
     const weekStartD = periodStartISO('week');
-    function contactedThisWeek(d){
-      if(d.lastEngaged && d.lastEngaged >= weekStartD) return true;
-      return (state.contactsD[d.id]||[]).some(c=>(c.history||[]).some(h=>h>=weekStartD));
-    }
-    const filtered = countedDaeen().filter(d=>{
+    const contactedThisCycle = d => daeenActiveIn(d, weekStartD);
+    return countedDaeen().filter(d=>{
       if(state.daeenFilterUnassigned && d.missionaryId) return false;
-      if(state.daeenFilterNotContacted && contactedThisWeek(d)) return false;
+      if(state.daeenFilterNotContacted && contactedThisCycle(d)) return false;
       return !state.searchText || d.name.toLowerCase().includes(state.searchText.toLowerCase());
     }).slice().sort((a,b)=>{
-      const ca = contactedThisWeek(a), cb = contactedThisWeek(b);
+      const na = daeenMissionaryName(a.missionaryId), nb = daeenMissionaryName(b.missionaryId);
+      if(!!na !== !!nb) return na ? -1 : 1;
+      const mc = na.localeCompare(nb);
+      if(mc) return mc;
+      const ca = contactedThisCycle(a), cb = contactedThisCycle(b);
       if(ca !== cb) return ca ? 1 : -1;
       return (a.region||'').localeCompare(b.region||'') || a.name.localeCompare(b.name);
+    });
+  }
+  // How a Daeen is doing with their own contacts. "Open" = not yet Bai'at.
+  function daeenContactSummary(d){
+    const cs = state.contactsD[d.id] || [];
+    const open = cs.filter(c=>c.stage < 3);
+    let last = null;
+    open.forEach(c=>{
+      [c.lastContact].concat(c.history||[]).forEach(x=>{
+        if(/^\d{4}-\d{2}-\d{2}$/.test(x||'') && (!last || x > last)) last = x;
+      });
+    });
+    const since = last ? daysAgo(last) : null;
+    let status = 'active';
+    if(!open.length) status = 'none';
+    else if(since === null || since >= STAGNANT_DAYS) status = 'stale';
+    return {total: cs.length, open, baiats: cs.length - open.length, last, since, status};
+  }
+  // Short, plain note about the Daeen who need a nudge: no contacts yet, or
+  // contacts they haven't reached out to in a while. Daeen who are on track aren't listed.
+  function missionaryDaeenMessage(missionaryId){
+    const m = state.missionaries.find(x=>x.id===missionaryId);
+    if(!m) return null;
+    const items = allDaeenRows().filter(d=>d.missionaryId===missionaryId).map(d=>({d, sum: daeenContactSummary(d)}));
+    const none = items.filter(x=>x.sum.status==='none');
+    const stale = items.filter(x=>x.sum.status==='stale');
+    if(!none.length && !stale.length) return null;
+    const first = (m.name||'').trim().split(/\s+/)[0] || m.name;
+    const MAX = 12;   // names per list, so the message stays short
+    const cap = (arr, fmt)=> arr.slice(0, MAX).map(fmt).join(', ') + (arr.length > MAX ? ', and ' + (arr.length - MAX) + ' more' : '');
+    const lines = ['Assalamu Alaikum Murabbi ' + first + ' sahib,', ''];
+    lines.push('Based on the Tabligh tracker, ' + (none.length + stale.length === 1 ? 'one of your Daeen could use' : 'a few of your Daeen could use') + ' some help with their contacts.', '');
+    if(none.length) lines.push('No contacts yet: ' + cap(none, x=> x.d.name + (x.sum.baiats ? ' (already has a Bai\u2019at)' : '')));
+    if(stale.length) lines.push('Haven\u2019t reached out to their contacts in ' + (STAGNANT_DAYS/7) + '+ weeks: ' + cap(stale, x=> x.d.name + ' (' + (x.sum.last ? 'last ' + fmtShortDate(x.sum.last) : 'never') + ')'));
+    lines.push('');
+    if(none.length && stale.length) lines.push('Could you help the first group find a contact, and encourage the second group to reach out to theirs again?');
+    else if(none.length) lines.push(none.length === 1 ? 'Could you help them find a contact to follow up with?' : 'Could you help them each find a contact to follow up with?');
+    else lines.push('Could you encourage ' + (stale.length === 1 ? 'them' : 'them') + ' to reach out to their contacts again?');
+    lines.push('', 'Jazakallah Ahsanul Jaza, praying for your success.');
+    if(state.me && state.me.name) lines.push('', state.me.name);
+    return lines.join('\n');
+  }
+  function sendMissionaryDaeenWhatsApp(missionaryId){
+    const msg = missionaryDaeenMessage(missionaryId);
+    if(!msg){ showToast('Nothing to flag \u2014 all their Daeen are on track'); return; }
+    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank', 'noopener');
+  }
+  function copyMissionaryDaeenMessage(missionaryId){
+    const msg = missionaryDaeenMessage(missionaryId);
+    if(!msg){ showToast('Nothing to flag \u2014 all their Daeen are on track'); return; }
+    const done = ()=> showToast('Message copied');
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(msg).then(done).catch(()=> fallbackCopy(msg, done, 'Could not copy'));
+    else fallbackCopy(msg, done, 'Could not copy');
+  }
+
+  function renderAdminDaeen(){
+    const weekStartD = periodStartISO('week');
+    const contactedThisWeek = d => daeenActiveIn(d, weekStartD);
+    const filtered = allDaeenRows();
+    const groupInfo = {};
+    filtered.forEach(d=>{
+      const g = daeenMissionaryName(d.missionaryId) ? d.missionaryId : '';
+      const info = groupInfo[g] || (groupInfo[g] = {n:0, none:0, stale:0});
+      info.n++;
+      const st = daeenContactSummary(d).status;
+      if(st === 'none') info.none++;
+      else if(st === 'stale') info.stale++;
     });
     let html = '<div class="card"><div class="row-between"><h2>All Daeen (' + countedDaeen().length + ')</h2>';
     html += '<div class="row" style="gap:14px;">';
     html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="filterUnassigned" ' + (state.daeenFilterUnassigned?'checked':'') + '> unassigned only</label>';
     html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="filterNotContacted" ' + (state.daeenFilterNotContacted?'checked':'') + '> not contacted this cycle only</label>';
     html += '</div></div>';
-    html += '<div class="muted" style="margin-bottom:8px;">Sorted with anyone not yet contacted this cycle first.</div>';
+    html += '<div class="muted" style="margin-bottom:8px;">Grouped by missionary; within each, anyone not yet contacted this cycle comes first. Use the buttons on each missionary’s bar to message them about their Daeen’s contacts.</div>';
     html += '<div class="search-box"><input type="text" id="adminDaeenSearch" placeholder="Search Daeen…" value="' + escapeHtml(state.searchText) + '"></div>';
-    html += '<table class="admin-table"><thead><tr><th>Name</th><th>Jamaat</th><th>This cycle</th><th>Missionary</th><th></th></tr></thead><tbody>';
+    html += '<div class="table-scroll"><table class="admin-table"><thead><tr><th>Name</th><th>Jamaat</th><th>This cycle</th><th>Contacts</th><th>Missionary</th><th></th></tr></thead><tbody>';
+    let lastGroup = null;
     for(const d of filtered){
+      const g = daeenMissionaryName(d.missionaryId) ? d.missionaryId : '';
+      if(g !== lastGroup){
+        lastGroup = g;
+        const info = groupInfo[g];
+        html += '<tr class="group-row"><td colspan="6"><div class="group-head"><span>' + (g ? escapeHtml(daeenMissionaryName(g)) : 'Unassigned') + ' <span class="muted" style="font-weight:600;">· ' + info.n + ' Daeen' + (info.none ? ' · ' + info.none + ' with no contacts' : '') + (info.stale ? ' · ' + info.stale + ' gone quiet' : '') + '</span></span>';
+        if(g && (info.none || info.stale)){
+          html += '<span class="group-actions"><button class="wa-btn" data-action="waMissionaryDaeen" data-mid="' + g + '" title="Open WhatsApp with a message about these Daeen and their contacts">WhatsApp Daeen update request</button>';
+          html += '<button class="ghost" data-action="copyMissionaryDaeenMsg" data-mid="' + g + '">Copy message</button></span>';
+        }
+        html += '</div></td></tr>';
+      }
       const contacted = contactedThisWeek(d);
+      const sum = daeenContactSummary(d);
+      let contactsCell;
+      if(!sum.total) contactsCell = '<span class="flag-badge">none</span>';
+      else contactsCell = sum.total + (sum.status === 'none' ? ' <span class="muted">· all Bai’at</span>' : (sum.last ? ' <span class="' + (sum.status === 'stale' ? '' : 'muted') + '" style="' + (sum.status === 'stale' ? 'color:var(--warn); font-weight:600;' : '') + '">· last ' + escapeHtml(fmtShortDate(sum.last)) + '</span>' : ' <span class="muted">· no contact yet</span>'));
       html += '<tr><td>' + escapeHtml(d.name) + '</td><td>' + escapeHtml(d.region||'—') + '</td>';
       html += '<td>' + (contacted?'<span class="ok-badge">contacted</span>':'<span class="flag-badge">not yet</span>') + '</td>';
+      html += '<td>' + contactsCell + '</td>';
       html += '<td><select data-action="reassign" data-id="' + d.id + '"><option value="">unassigned</option>';
       for(const m of state.missionaries) html += '<option value="' + m.id + '" ' + (m.id===d.missionaryId?'selected':'') + '>' + escapeHtml(m.name) + '</option>';
       html += '</select></td><td><button class="danger-link" data-action="removeDaeen" data-id="' + d.id + '">Remove</button></td></tr>';
     }
-    html += '</tbody></table></div>';
+    html += '</tbody></table></div></div>';
     return html;
   }
 
@@ -3455,7 +3549,7 @@
     html += '<div class="search-box"><input type="text" id="allContactsAdminSearch" placeholder="Search contacts…" value="' + escapeHtml(state.searchText) + '"></div>';
     if(!rows.length) html += '<div class="empty-state">No contacts match.</div>';
     else{
-      html += '<table class="admin-table"><thead><tr><th>Name</th><th>Stage</th><th>Missionary</th><th>Via Daeen</th><th>This cycle</th></tr></thead><tbody>';
+      html += '<div class="table-scroll"><table class="admin-table"><thead><tr><th>Name</th><th>Stage</th><th>Missionary</th><th>Via Daeen</th><th>This cycle</th></tr></thead><tbody>';
       let lastGroup = null;
       rows.slice(0,500).forEach(r=>{
         const engaged = engagedThisWk(r.c);
@@ -3476,7 +3570,7 @@
         html += '<td>' + (r.via?escapeHtml(r.via):'<span class="muted">—</span>') + '</td>';
         html += '<td>' + (engaged?'<span class="ok-badge">contacted</span>':'<span class="flag-badge">not yet</span>') + '</td></tr>';
       });
-      html += '</tbody></table>';
+      html += '</tbody></table></div>';
       if(rows.length>500) html += '<div class="muted" style="margin-top:8px;">Showing the first 500 of ' + rows.length + ' — narrow with search or filters to find specific ones.</div>';
     }
     html += '</div>';
@@ -3883,6 +3977,8 @@
     const adminDaeenSearch = document.getElementById('adminDaeenSearch');
     if(adminDaeenSearch) adminDaeenSearch.addEventListener('input', e=>{ state.searchText = e.target.value; render(); });
     root.querySelectorAll('[data-action="reassign"]').forEach(sel=> sel.addEventListener('change', e=>{ reassignDaeen(sel.getAttribute('data-id'), e.target.value); }));
+    root.querySelectorAll('[data-action="waMissionaryDaeen"]').forEach(b=> b.addEventListener('click', ()=> sendMissionaryDaeenWhatsApp(b.getAttribute('data-mid'))));
+    root.querySelectorAll('[data-action="copyMissionaryDaeenMsg"]').forEach(b=> b.addEventListener('click', ()=> copyMissionaryDaeenMessage(b.getAttribute('data-mid'))));
     root.querySelectorAll('[data-action="waMissionary"]').forEach(b=> b.addEventListener('click', ()=> sendMissionaryWhatsApp(b.getAttribute('data-mid'))));
     root.querySelectorAll('[data-action="copyMissionaryMsg"]').forEach(b=> b.addEventListener('click', ()=> copyMissionaryMessage(b.getAttribute('data-mid'))));
     root.querySelectorAll('[data-action="reassignContactAdmin"]').forEach(sel=> sel.addEventListener('change', e=>{

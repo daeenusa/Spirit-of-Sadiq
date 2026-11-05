@@ -173,6 +173,7 @@
   table.ysheet .ys-input:focus{outline:2px solid var(--accent); outline-offset:1px; border-style:solid;}
   table.ysheet .ys-input.ys-edited{background:var(--accent-soft); font-weight:700; border-style:solid;}
   table.ysheet .ys-reset{font-size:11px; margin-top:2px;}
+  .cycle-due{font-size:21px; font-weight:800; color:var(--accent-deep); margin:2px 0 3px;}
   .ys-nav{display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:14px;}
   .ys-nav select{font:inherit; font-size:14px; font-weight:700; color:var(--accent-deep); padding:9px 12px; border:1px solid var(--border); border-radius:10px; background:var(--surface); min-width:0; flex:0 1 260px;}
   .ys-arrow{width:40px; height:40px; border-radius:50%; border:1px solid var(--border); background:var(--surface); color:var(--accent-deep); font-size:22px; line-height:1; cursor:pointer; padding:0; flex:none;}
@@ -242,6 +243,7 @@
     stageLabels: ['Initial Contact','Interested','Ta\'leem (Study)','Bai\'at'],
     tab: 'mine',
     period: 'week',
+    reportCycleOffset: 0,   // National Report: 0 = current cycle, -1 = previous, ...
     monthlyFunnelPeriod: 'month',
     setupStage: 'role',
     pendingRole: null,
@@ -293,7 +295,92 @@
     const now = new Date();
     return Math.floor((now - then) / (1000*60*60*24));
   }
-  function todayStr(){ return new Date().toISOString().slice(0,10); }
+  // Local calendar date as YYYY-MM-DD. (toISOString() is UTC, which flips to
+  // "tomorrow" in the evening in US time zones.)
+  function isoLocal(d){
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  function todayStr(){ return isoLocal(new Date()); }
+  function addDaysISO(iso, n){
+    const d = new Date(iso + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    return isoLocal(d);
+  }
+  // true when start <= x < endExcl (endExcl optional = no upper bound)
+  function inRangeISO(x, start, endExcl){
+    return !!x && x >= start && (!endExcl || x < endExcl);
+  }
+
+  // ---------- Reporting calendar ----------
+  // Missionaries report on the 1st and 3rd Tuesday of every month. A reporting
+  // "cycle" runs from the day after one report Tuesday through the next report
+  // Tuesday (2 or 3 weeks long). Report dates are worked out automatically.
+  const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  function fmtShortDate(iso, withWeekday){
+    const d = new Date(iso + 'T00:00:00');
+    return (withWeekday ? DAY_ABBR[d.getDay()] + ' ' : '') + MONTH_ABBR[d.getMonth()] + ' ' + d.getDate();
+  }
+  function fmtLongDate(iso){
+    const d = new Date(iso + 'T00:00:00');
+    return DAY_ABBR[d.getDay()] + ', ' + MONTH_ABBR[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+  }
+  function nthTuesdayISO(y, m0, n){
+    const first = new Date(y, m0, 1);
+    const offset = (2 - first.getDay() + 7) % 7;
+    return isoLocal(new Date(y, m0, 1 + offset + 7*(n-1)));
+  }
+  let __cycleCache = null;
+  function reportCycles(){
+    const y = new Date().getFullYear();
+    if(__cycleCache && __cycleCache.year === y) return __cycleCache.cycles;
+    const dates = [];
+    for(let yy=y-6; yy<=y+2; yy++){
+      for(let m=0; m<12; m++){ dates.push(nthTuesdayISO(yy,m,1)); dates.push(nthTuesdayISO(yy,m,3)); }
+    }
+    const cycles = [];
+    for(let i=1; i<dates.length; i++){
+      const start = addDaysISO(dates[i-1], 1), end = dates[i];
+      const days = Math.round((new Date(end + 'T00:00:00') - new Date(start + 'T00:00:00')) / 86400000) + 1;
+      cycles.push({start, end, endExcl: addDaysISO(end, 1), days});
+    }
+    __cycleCache = {year: y, cycles};
+    return cycles;
+  }
+  // The current cycle is the first one whose report Tuesday is today or later,
+  // so on a report Tuesday you still see the full cycle that ends that day.
+  function currentCycleIndex(){
+    const cs = reportCycles(), t = todayStr();
+    for(let i=0; i<cs.length; i++){ if(cs[i].end >= t) return i; }
+    return cs.length - 1;
+  }
+  function currentCycle(){ return reportCycles()[currentCycleIndex()]; }
+  function cycleAt(offset){
+    const cs = reportCycles();
+    const i = Math.max(0, Math.min(cs.length-1, currentCycleIndex() + (offset||0)));
+    return cs[i];
+  }
+  function daysUntilISO(iso){
+    return Math.round((new Date(iso + 'T00:00:00') - new Date(todayStr() + 'T00:00:00')) / 86400000);
+  }
+  function cycleRangeText(c){ return fmtShortDate(c.start) + ' \u2013 ' + fmtShortDate(c.end); }
+  function cycleDueText(c){
+    const n = daysUntilISO(c.end);
+    if(n > 1) return 'due ' + fmtShortDate(c.end, true) + ' \u00b7 ' + n + ' days left';
+    if(n === 1) return 'due tomorrow (' + fmtShortDate(c.end, true) + ') \u00b7 1 day left';
+    if(n === 0) return 'report day \u2014 due today (' + fmtShortDate(c.end, true) + ')';
+    return 'closed ' + fmtShortDate(c.end, true);
+  }
+  // Did this thing happen inside [start, endExcl)? (single contact / Daeen)
+  function contactEngagedIn(c, start, endExcl){
+    return inRangeISO(c.lastContact, start, endExcl) || (c.history||[]).some(h=>inRangeISO(h, start, endExcl));
+  }
+  function daeenEngagedIn(d, start, endExcl){
+    return inRangeISO(d.lastEngaged, start, endExcl) || (d.engagementHistory||[]).some(h=>inRangeISO(h, start, endExcl));
+  }
+  function daeenActiveIn(d, start, endExcl){
+    return daeenEngagedIn(d, start, endExcl) || (state.contactsD[d.id]||[]).some(c=>(c.history||[]).some(h=>inRangeISO(h, start, endExcl)));
+  }
   function showToast(msg){
     let toast = document.getElementById('sos-toast');
     if(toast) toast.remove();
@@ -311,28 +398,22 @@
   function periodStartISO(period){
     if(period==='month'){
       const now = new Date();
-      return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+      return isoLocal(new Date(now.getFullYear(), now.getMonth(), 1));
     }
     if(period==='quarter'){
       const now = new Date();
       const qStartMonth = Math.floor(now.getMonth()/3)*3;
-      return new Date(now.getFullYear(), qStartMonth, 1).toISOString().slice(0,10);
+      return isoLocal(new Date(now.getFullYear(), qStartMonth, 1));
     }
-    // Reporting week runs Wednesday through the following Tuesday — this way,
-    // when the Tuesday meeting happens, "this week" is the full week that just
-    // finished (including that Tuesday), not a brand-new empty one.
-    // (Day-level precision only — the app stores dates, not exact times.)
-    const now = new Date();
-    const day = now.getDay(); // 0=Sun..6=Sat, Wednesday=3
-    const daysSinceWednesday = (day - 3 + 7) % 7;
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysSinceWednesday);
-    return start.toISOString().slice(0,10);
+    // 'week' now means the current reporting CYCLE (day after the previous
+    // report Tuesday through the next report Tuesday: 1st and 3rd Tuesdays).
+    return currentCycle().start;
   }
   function inCurrentMonth(dateStr){
     if(!dateStr) return false;
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
-    const end = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
+    const start = isoLocal(new Date(now.getFullYear(), now.getMonth(), 1));
+    const end = isoLocal(new Date(now.getFullYear(), now.getMonth()+1, 0));
     return dateStr >= start && dateStr <= end;
   }
 
@@ -505,7 +586,7 @@
         '</div>';
     }
     return '<div class="period-toggle">' +
-      '<button data-period="week" class="' + (state.period==='week'?'active':'') + '">This week</button>' +
+      '<button data-period="week" class="' + (state.period==='week'?'active':'') + '">This cycle</button>' +
       '<button data-period="month" class="' + (state.period==='month'?'active':'') + '">This month</button>' +
       '</div>';
   }
@@ -538,27 +619,27 @@
     for(let i=buckets.length-1;i>=0;i--){ if(buckets[i]>0) streak++; else break; }
     return streak;
   }
-  function previousWeekRangeISO(){
-    const thisStart = periodStartISO('week');
-    const start = new Date(thisStart + 'T00:00:00');
-    start.setDate(start.getDate()-7);
-    return {start: start.toISOString().slice(0,10), end: thisStart};
+  // The cycle before the one at `offset` (end is exclusive).
+  function previousCycleRangeISO(offset){
+    const p = cycleAt((offset||0) - 1);
+    return {start: p.start, end: p.endExcl, days: p.days};
   }
   function previousMonthRangeISO(){
     const thisStart = periodStartISO('month');
     const thisStartDate = new Date(thisStart + 'T00:00:00');
     const prevStart = new Date(thisStartDate.getFullYear(), thisStartDate.getMonth()-1, 1);
-    return {start: prevStart.toISOString().slice(0,10), end: thisStart};
+    return {start: isoLocal(prevStart), end: thisStart};
   }
-  // A compact "is this better or worse than last week" indicator — an arrow,
+  // A compact "is this better or worse than last cycle" indicator — an arrow,
   // a color, and the plain numbers. Deliberately not a chart: the point is
   // a one-glance read, not a data dive.
-  function weekTrendRow(label, thisWeekVal, lastWeekVal){
+  function weekTrendRow(label, thisWeekVal, lastWeekVal, lastWord){
+    lastWord = lastWord || 'last cycle';
     const diff = thisWeekVal - lastWeekVal;
     let arrow, color, text;
-    if(diff > 0){ arrow = '\u2191'; color = 'var(--good)'; text = 'up ' + diff + ' from last week'; }
-    else if(diff < 0){ arrow = '\u2193'; color = 'var(--warn)'; text = 'down ' + Math.abs(diff) + ' from last week'; }
-    else { arrow = '\u2192'; color = 'var(--text-muted)'; text = 'same as last week'; }
+    if(diff > 0){ arrow = '\u2191'; color = 'var(--good)'; text = 'up ' + diff + ' from ' + lastWord; }
+    else if(diff < 0){ arrow = '\u2193'; color = 'var(--warn)'; text = 'down ' + Math.abs(diff) + ' from ' + lastWord; }
+    else { arrow = '\u2192'; color = 'var(--text-muted)'; text = 'same as ' + lastWord; }
     return '<div class="row-between" style="padding:9px 0; border-bottom:1px solid var(--border);">'
       + '<div>' + escapeHtml(label) + '</div>'
       + '<div style="text-align:right;"><span style="font-family:var(--mono); font-weight:700;">' + thisWeekVal + '</span> '
@@ -702,24 +783,24 @@
     return html;
   }
 
-  // Same shape as computeMetrics, but takes an explicit period-start date
-  // instead of reading the global week/month toggle — used by the parameterized
-  // Weekly/Monthly National Report so each report is always internally
+  // Same shape as computeMetrics, but takes an explicit period (start, optional
+  // exclusive end) instead of reading the global cycle/month toggle — used by the
+  // parameterized Cycle/Monthly National Report so each report is always internally
   // consistent regardless of what the funnel toggle happens to be set to.
-  function computeMetricsForPeriod(missionaryId, periodStart){
+  function computeMetricsForPeriod(missionaryId, periodStart, endExcl){
     const daeenList = state.daeenRoster.filter(d=>d.missionaryId===missionaryId);
-    const daeenReachedOut = daeenList.filter(d=> d.lastEngaged && d.lastEngaged >= periodStart).length;
+    const daeenReachedOut = daeenList.filter(d=> daeenEngagedIn(d, periodStart, endExcl)).length;
     const personalContacts = state.contactsM[missionaryId] || [];
-    const personalReachedOut = personalContacts.filter(c=> (c.lastContact && c.lastContact>=periodStart) || (c.history||[]).some(h=>h>=periodStart)).length;
+    const personalReachedOut = personalContacts.filter(c=> contactEngagedIn(c, periodStart, endExcl)).length;
     let baiats = 0;
-    for(const c of personalContacts){ if(c.stage===3 && c.baiatDate && c.baiatDate>=periodStart) baiats++; }
+    for(const c of personalContacts){ if(c.stage===3 && inRangeISO(c.baiatDate, periodStart, endExcl)) baiats++; }
     let tablighTotal = 0, tablighReachedOut = 0;
     for(const d of daeenList){
       const cs = state.contactsD[d.id] || [];
       tablighTotal += cs.length;
       for(const c of cs){
-        if(c.lastContact && c.lastContact >= periodStart) tablighReachedOut++;
-        if(c.stage===3 && c.baiatDate && c.baiatDate>=periodStart) baiats++;
+        if(contactEngagedIn(c, periodStart, endExcl)) tablighReachedOut++;
+        if(c.stage===3 && inRangeISO(c.baiatDate, periodStart, endExcl)) baiats++;
       }
     }
     return {
@@ -1413,28 +1494,31 @@
       if(m) m.target = newTarget;
     });
   }
-  function hasReportedSince(missionaryId, periodStart){
+  function hasReportedSince(missionaryId, periodStart, endExcl){
     const personal = state.contactsM[missionaryId] || [];
-    if(personal.some(c => (c.history||[]).some(h=>h>=periodStart))) return true;
+    if(personal.some(c => (c.history||[]).some(h=>inRangeISO(h, periodStart, endExcl)))) return true;
     const myDaeen = state.daeenRoster.filter(d=>d.missionaryId===missionaryId);
-    if(myDaeen.some(d => d.lastEngaged && d.lastEngaged >= periodStart)) return true;
+    if(myDaeen.some(d => daeenEngagedIn(d, periodStart, endExcl))) return true;
     for(const d of myDaeen){
       const cs = state.contactsD[d.id] || [];
-      if(cs.some(c => (c.history||[]).some(h=>h>=periodStart))) return true;
+      if(cs.some(c => (c.history||[]).some(h=>inRangeISO(h, periodStart, endExcl)))) return true;
     }
     return false;
   }
+  // "Reported" = any activity logged in the cycle (no separate submit step).
+  function hasReportedInCycle(missionaryId, cyc){
+    if(hasGroupReportIn(missionaryId, cyc.start, cyc.endExcl)) return true;
+    return hasReportedSince(missionaryId, cyc.start, cyc.endExcl);
+  }
   function hasReportedThisWeek(missionaryId){
-    if(hasGroupReportThisWeek(missionaryId)) return true;
-    return hasReportedSince(missionaryId, periodStartISO('week'));
+    return hasReportedInCycle(missionaryId, currentCycle());
   }
   function hasReportedThisMonth(missionaryId){
     return hasReportedSince(missionaryId, periodStartISO('month'));
   }
 
-  function hasGroupReportThisWeek(missionaryId){
-    const periodStart = periodStartISO('week');
-    return (state.groupReports[missionaryId]||[]).some(r => r.date >= periodStart);
+  function hasGroupReportIn(missionaryId, periodStart, endExcl){
+    return (state.groupReports[missionaryId]||[]).some(r => inRangeISO(r.date, periodStart, endExcl));
   }
   async function addContact(data){
     const list = state.contactsM[state.me.id] || [];
@@ -1622,9 +1706,17 @@
     render();
   }
   async function logDaeenEngagement(id, method){
-    const d = state.daeenRoster.find(x=>x.id===id);
-    if(d){ if(!d.engagementHistory) d.engagementHistory=[]; const t = todayStr(); if(d.engagementHistory[d.engagementHistory.length-1]!==t) d.engagementHistory.push(t); }
-    await updateDaeenEntry(id, {lastEngaged: todayStr(), lastEngagedMethod: method});
+    const t = todayStr();
+    // Append to the history inside the race-safe merge, so past reporting
+    // cycles can be reconstructed (lastEngaged alone only remembers the latest).
+    await mutateSharedDaeenRoster(fresh=>{
+      const d = fresh.find(x=>x.id===id);
+      if(!d) return;
+      if(!d.engagementHistory) d.engagementHistory = [];
+      if(d.engagementHistory[d.engagementHistory.length-1] !== t) d.engagementHistory.push(t);
+      d.lastEngaged = t; d.lastEngagedMethod = method;
+    });
+    state.editingDaeenId = null; render();
   }
 
   function renderDaeenAddForm(){
@@ -1695,7 +1787,7 @@
       html += '</div>';
       html += '<div class="eyebrow" style="margin-top:4px; margin-bottom:7px;">Daeen Training Log (Optional)</div>';
       const trainedThisWeek = d.lastTrainedDate && d.lastTrainedDate >= periodStartISO('week');
-      html += '<label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:12px; cursor:pointer;"><input type="checkbox" data-action="toggleTrained" data-id="' + d.id + '" ' + (trainedThisWeek?'checked':'') + '> Trained / attended class / personally trained this week</label>';
+      html += '<label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:12px; cursor:pointer;"><input type="checkbox" data-action="toggleTrained" data-id="' + d.id + '" ' + (trainedThisWeek?'checked':'') + '> Trained / attended class / personally trained this cycle</label>';
       html += '<div class="contact-actions">';
       html += '<button class="small-link" data-action="editdaeen" data-id="' + d.id + '">Edit</button>';
       html += '<button class="danger-link" data-action="deletedaeen" data-id="' + d.id + '">Remove</button>';
@@ -1939,7 +2031,7 @@
     const myRec = state.missionaries.find(x=>x.id===state.me.id);
     const reportedCount = myMissionaries.filter(m=>hasReportedThisWeek(m.id)).length;
     let html = '<div class="card"><div class="row-between"><div class="eyebrow">' + escapeHtml((myRec&&myRec.regionLabel)||'Your region') + '</div>' + periodToggleHtml() + '</div>';
-    html += '<div class="muted" style="margin-top:-4px; margin-bottom:6px;">' + reportedCount + ' of ' + myMissionaries.length + ' active this week</div>';
+    html += '<div class="muted" style="margin-top:-4px; margin-bottom:6px;">' + reportedCount + ' of ' + myMissionaries.length + ' reported this cycle \u00b7 ' + escapeHtml(cycleDueText(currentCycle())) + '</div>';
     html += '<div class="metric-grid">';
     html += metricTile(myMissionaries.length, 'Missionaries under you');
     html += metricTile(totalDaeen, 'Daeen in your region');
@@ -1953,7 +2045,7 @@
       const metrics = computeMetrics(m.id);
       const reportedThisWeek = hasReportedThisWeek(m.id);
       html += '<div class="missionary-block"><div class="row-between"><div class="name">' + escapeHtml(m.name) + '</div>';
-      html += reportedThisWeek ? '<span class="ok-badge">Reported this week</span>' : '<span class="flag-badge">Needs this week\u2019s update</span>';
+      html += reportedThisWeek ? '<span class="ok-badge">Reported this cycle</span>' : '<span class="flag-badge">Needs this cycle\u2019s update</span>';
       html += '</div>';
       if(metrics.daeenTotal - metrics.daeenReachedOut > 0) html += '<div class="muted" style="margin-top:2px;">' + (metrics.daeenTotal - metrics.daeenReachedOut) + ' Daeen not reached</div>';
       html += '<div class="metric-grid" style="margin-top:8px;">';
@@ -2084,13 +2176,53 @@
     const leaderIds = new Set(state.missionaries.filter(m=>m.isRegionalLeader).map(m=>m.id));
     return state.missionaries.filter(m=>!m.isInCharge && (m.isRegionalLeader || leaderIds.has(m.regionalLeaderId)));
   }
+  function cycleNavOptions(){
+    const maxBack = Math.min(40, currentCycleIndex());
+    const out = [];
+    for(let o=0; o>=-maxBack; o--){
+      const c = cycleAt(o);
+      out.push({offset:o, label: cycleRangeText(c) + ' \u00b7 report ' + fmtShortDate(c.end, true) + (o===0 ? ' (current)' : '')});
+    }
+    return out;
+  }
+  function renderCycleNav(offset, cyc){
+    const opts = cycleNavOptions();
+    let html = '<div class="card">';
+    html += '<div class="ys-nav"><button class="ys-arrow" id="cycPrev" aria-label="Earlier cycle" ' + (-offset >= opts.length-1 ? 'disabled' : '') + '>\u2039</button>';
+    html += '<select id="cycleSelect" aria-label="Choose a reporting cycle">' + opts.map(o=> '<option value="' + o.offset + '"' + (o.offset===offset?' selected':'') + '>' + escapeHtml(o.label) + '</option>').join('') + '</select>';
+    html += '<button class="ys-arrow" id="cycNext" aria-label="Later cycle" ' + (offset >= 0 ? 'disabled' : '') + '>\u203a</button></div>';
+    if(offset === 0){
+      html += '<div class="muted" style="text-align:center;">Current cycle \u00b7 ' + escapeHtml(cycleDueText(cyc)) + '</div>';
+    } else {
+      html += '<div class="muted" style="text-align:center;">Past cycle \u00b7 report was ' + escapeHtml(fmtShortDate(cyc.end, true)) + ' \u00b7 <button class="small-link" id="cycCurrent">Back to current cycle</button></div>';
+    }
+    html += '</div>';
+    return html;
+  }
+  // Missionary-facing: when the next report is due and whether they're covered.
+  function renderCycleBanner(){
+    const c = currentCycle();
+    const n = daysUntilISO(c.end);
+    const when = n === 0 ? 'today' : (n === 1 ? 'tomorrow' : 'in ' + n + ' days');
+    const reported = hasReportedThisWeek(state.me.id);
+    let html = '<div class="card cycle-banner"><div class="row-between" style="gap:12px; align-items:flex-start; flex-wrap:wrap;">';
+    html += '<div><div class="eyebrow">Next report due</div>';
+    html += '<div class="cycle-due">' + escapeHtml(fmtShortDate(c.end, true)) + ' <span class="muted" style="font-weight:600; font-size:14px;">\u00b7 ' + when + '</span></div>';
+    html += '<div class="muted" style="font-size:12px;">Reporting cycle ' + escapeHtml(cycleRangeText(c)) + ' (' + c.days + ' days) \u2014 log your contacts and Daeen before then.</div></div>';
+    html += reported ? '<span class="ok-badge">Reported this cycle</span>' : '<span class="flag-badge">Needs this cycle\u2019s update</span>';
+    html += '</div></div>';
+    return html;
+  }
   function renderReport(periodMode){
     const isWeek = periodMode !== 'month';
-    const periodStart = isWeek ? periodStartISO('week') : periodStartISO('month');
-    const periodWord = isWeek ? 'week' : 'month';
-    const periodWordCap = isWeek ? 'Week' : 'Month';
-    const reportedFn = isWeek ? hasReportedThisWeek : hasReportedThisMonth;
-    // The weekly report only counts missionaries who are actually assigned to
+    // The cycle report can look back at earlier cycles (state.reportCycleOffset <= 0).
+    const offset = isWeek ? Math.min(0, state.reportCycleOffset||0) : 0;
+    const cyc = isWeek ? cycleAt(offset) : null;
+    const periodStart = isWeek ? cyc.start : periodStartISO('month');
+    const periodEndExcl = isWeek ? cyc.endExcl : null;
+    const periodWord = isWeek ? 'cycle' : 'month';
+    const reportedFn = isWeek ? (id=>hasReportedInCycle(id, cyc)) : hasReportedThisMonth;
+    // The cycle report only counts missionaries who are actually assigned to
     // a region — an unassigned entry usually means setup isn't finished yet,
     // and including them skews "X of Y reported" numbers. The monthly report
     // is the org-wide record, so it includes everyone, with anyone unassigned
@@ -2112,41 +2244,51 @@
     for(const d of reportDaeen) allContacts = allContacts.concat(state.contactsD[d.id]||[]);
 
     const reportedCount = reportMissionaries.filter(m=>reportedFn(m.id)).length;
-    const baiatsThisPeriod = allContacts.filter(c=>c.stage===3 && c.baiatDate && c.baiatDate>=periodStart).length;
-    const baiatsYearToDate = allContacts.filter(c=>c.stage===3 && inCurrentYear(c.baiatDate)).length;
-    const periodEndDate = new Date(periodStart + 'T00:00:00');
-    if(isWeek) periodEndDate.setDate(periodEndDate.getDate()+6);
-    else periodEndDate.setMonth(periodEndDate.getMonth()+1, 0);
+    const baiatsThisPeriod = allContacts.filter(c=>c.stage===3 && inRangeISO(c.baiatDate, periodStart, periodEndExcl)).length;
+    // Year to date = the fiscal year (Jul 1 \u2013 Jun 30). For a past cycle it is counted through that cycle's report date.
+    const ytdAnchor = isWeek ? cyc.end : todayStr();
+    const ytdStartISO = (parseInt(ytdAnchor.slice(5,7),10) >= 7 ? parseInt(ytdAnchor.slice(0,4),10) : parseInt(ytdAnchor.slice(0,4),10) - 1) + '-07-01';
+    const baiatsYearToDate = allContacts.filter(c=>c.stage===3 && (isWeek ? inRangeISO(c.baiatDate, ytdStartISO, cyc.endExcl) : inCurrentYear(c.baiatDate))).length;
+    const periodEndISO = isWeek ? cyc.end : (()=>{ const e = new Date(periodStart + 'T00:00:00'); e.setMonth(e.getMonth()+1, 0); return isoLocal(e); })();
+    const asOfToday = (isWeek && offset < 0) ? ' (today)' : '';
 
     const activeContactsCount = allContacts.filter(isContactActive).length;
     const activeDaeenCount = reportDaeen.filter(d=>isDaeenActive(d.id)).length;
 
-    let html = '<div class="card"><h2>This ' + periodWord + ' vs. year to date</h2>';
-    html += '<div class="muted" style="margin-bottom:10px;">Reporting ' + periodWord + ': ' + periodStart + ' through ' + periodEndDate.toISOString().slice(0,10) + (isWeek?' (resets Wednesdays)':'') + ' · Year to date = fiscal year since ' + fiscalYearStartISO() + '</div>';
+    let html = '';
+    if(isWeek) html += renderCycleNav(offset, cyc);
+    html += '<div class="card"><h2>' + (isWeek ? (offset===0 ? 'This cycle' : 'Cycle ending ' + fmtShortDate(cyc.end, true)) : 'This month') + ' vs. year to date</h2>';
+    html += '<div class="muted" style="margin-bottom:10px;">' + (isWeek
+        ? 'Reporting cycle: ' + cycleRangeText(cyc) + ' (' + cyc.days + ' days) \u00b7 ' + cycleDueText(cyc)
+        : 'Reporting month: ' + periodStart + ' through ' + periodEndISO)
+      + ' \u00b7 Year to date = fiscal year since ' + (isWeek ? ytdStartISO : fiscalYearStartISO()) + '</div>';
     html += '<div class="metric-grid">';
     html += metricTileColored(reportedCount, reportMissionaries.length, 'Missionaries reported this ' + periodWord);
     html += metricTile(baiatsThisPeriod + ' / ' + baiatsYearToDate, "Bai'ats this " + periodWord + " / year to date");
-    html += metricTileColored(activeContactsCount, totalContacts, 'Contacts active');
-    html += metricTileColored(activeDaeenCount, reportDaeen.length, 'Daeen active');
+    html += metricTileColored(activeContactsCount, totalContacts, 'Contacts active' + asOfToday);
+    html += metricTileColored(activeDaeenCount, reportDaeen.length, 'Daeen active' + asOfToday);
     html += '</div></div>';
 
-    const lastRange = isWeek ? previousWeekRangeISO() : previousMonthRangeISO();
-    const baiatsLastPeriod = allContacts.filter(c=>c.stage===3 && c.baiatDate && c.baiatDate>=lastRange.start && c.baiatDate<lastRange.end).length;
-    const engagedThisPeriod = allContacts.filter(c=> (c.lastContact && c.lastContact>=periodStart) || (c.history||[]).some(h=>h>=periodStart)).length;
-    const engagedLastPeriod = allContacts.filter(c=> (c.history||[]).some(h=>h>=lastRange.start && h<lastRange.end) || (c.lastContact && c.lastContact>=lastRange.start && c.lastContact<lastRange.end)).length;
-    const daeenEngagedThisPeriod = reportDaeen.filter(d=> (d.lastEngaged && d.lastEngaged>=periodStart) || (state.contactsD[d.id]||[]).some(c=>(c.history||[]).some(h=>h>=periodStart))).length;
-    const daeenEngagedLastPeriod = reportDaeen.filter(d=> (d.lastEngaged && d.lastEngaged>=lastRange.start && d.lastEngaged<lastRange.end) || (state.contactsD[d.id]||[]).some(c=>(c.history||[]).some(h=>h>=lastRange.start && h<lastRange.end))).length;
+    const lastRange = isWeek ? previousCycleRangeISO(offset) : previousMonthRangeISO();
+    const baiatsLastPeriod = allContacts.filter(c=>c.stage===3 && inRangeISO(c.baiatDate, lastRange.start, lastRange.end)).length;
+    const engagedThisPeriod = allContacts.filter(c=> contactEngagedIn(c, periodStart, periodEndExcl)).length;
+    const engagedLastPeriod = allContacts.filter(c=> contactEngagedIn(c, lastRange.start, lastRange.end)).length;
+    const daeenEngagedThisPeriod = reportDaeen.filter(d=> daeenActiveIn(d, periodStart, periodEndExcl)).length;
+    const daeenEngagedLastPeriod = reportDaeen.filter(d=> daeenActiveIn(d, lastRange.start, lastRange.end)).length;
     let daeenOwnedContactsWow = [];
     reportDaeen.forEach(d=> daeenOwnedContactsWow = daeenOwnedContactsWow.concat(state.contactsD[d.id]||[]));
-    const daeenContactsThisPeriod = daeenOwnedContactsWow.filter(c=> (c.lastContact && c.lastContact>=periodStart) || (c.history||[]).some(h=>h>=periodStart)).length;
-    const daeenContactsLastPeriod = daeenOwnedContactsWow.filter(c=> (c.history||[]).some(h=>h>=lastRange.start && h<lastRange.end) || (c.lastContact && c.lastContact>=lastRange.start && c.lastContact<lastRange.end)).length;
+    const daeenContactsThisPeriod = daeenOwnedContactsWow.filter(c=> contactEngagedIn(c, periodStart, periodEndExcl)).length;
+    const daeenContactsLastPeriod = daeenOwnedContactsWow.filter(c=> contactEngagedIn(c, lastRange.start, lastRange.end)).length;
 
-    html += '<div class="card"><h2>' + periodWordCap + ' over ' + periodWord + '</h2>';
-    html += '<div class="muted" style="margin-bottom:6px;">Is the org trending up or down compared to last ' + periodWord + '?</div>';
-    html += weekTrendRow("Bai\u2019ats", baiatsThisPeriod, baiatsLastPeriod);
-    html += weekTrendRow('Contacts engaged', engagedThisPeriod, engagedLastPeriod);
-    html += weekTrendRow('Daeen engaged', daeenEngagedThisPeriod, daeenEngagedLastPeriod);
-    html += weekTrendRow('Daeen contacts engaged', daeenContactsThisPeriod, daeenContactsLastPeriod);
+    const lastWord = isWeek ? 'last cycle' : 'last month';
+    html += '<div class="card"><h2>' + (isWeek ? 'Cycle over cycle' : 'Month over month') + '</h2>';
+    html += '<div class="muted" style="margin-bottom:6px;">Is the org trending up or down compared to ' + lastWord + '?'
+      + (isWeek ? ' This cycle is ' + cyc.days + ' days; the one before was ' + lastRange.days + ' days' + (cyc.days !== lastRange.days ? ' \u2014 counts aren\u2019t scaled, so keep the length difference in mind.' : '.') : '')
+      + '</div>';
+    html += weekTrendRow("Bai\u2019ats", baiatsThisPeriod, baiatsLastPeriod, lastWord);
+    html += weekTrendRow('Contacts engaged', engagedThisPeriod, engagedLastPeriod, lastWord);
+    html += weekTrendRow('Daeen engaged', daeenEngagedThisPeriod, daeenEngagedLastPeriod, lastWord);
+    html += weekTrendRow('Daeen contacts engaged', daeenContactsThisPeriod, daeenContactsLastPeriod, lastWord);
     html += '</div>';
 
     html += '<div class="card"><div class="row-between"><h2>National funnel</h2>' + periodToggleHtml(isWeek?'':'quarterly') + '</div>';
@@ -2159,13 +2301,13 @@
     html += '</div>';
 
     const reportRegionLeaders = state.missionaries.filter(m=>m.isRegionalLeader);
-    html += '<div class="card"><div class="row-between"><h2>By region — with reporting compliance</h2><button class="ghost" id="copySummaryBtn">Copy ' + periodWord + 'ly report</button></div>';
+    html += '<div class="card"><div class="row-between"><h2>By region — with reporting compliance</h2><button class="ghost" id="copySummaryBtn">Copy ' + (isWeek ? 'cycle' : 'monthly') + ' report</button></div>';
     html += '<div class="muted" style="margin-bottom:12px;">Region totals, who hasn\u2019t reported yet, and each missionary\u2019s numbers.</div>';
     reportRegionLeaders.forEach(rl=>{
       const team = teamOf(rl);
       let dR=0, dT=0, cR=0, cT=0, bM=0, dcR=0, dcT=0;
       team.forEach(m=>{
-        const met = computeMetricsForPeriod(m.id, periodStart);
+        const met = computeMetricsForPeriod(m.id, periodStart, periodEndExcl);
         dR += met.daeenReachedOut; dT += met.daeenTotal;
         cR += met.personalReachedOut; cT += met.personalContactsTotal;
         dcR += met.tablighReachedOut; dcT += met.tablighTotal;
@@ -2184,7 +2326,7 @@
         html += '<div class="flag-badge" style="display:block; padding:8px 12px; margin-bottom:10px;">Didn\u2019t report this ' + periodWord + ': ' + notReported.map(m=>escapeHtml(m.name)).join(', ') + '</div>';
       }
       team.slice().sort((a,b)=> (reportedFn(a.id)?1:0) - (reportedFn(b.id)?1:0)).forEach(m=>{
-        const met = computeMetricsForPeriod(m.id, periodStart);
+        const met = computeMetricsForPeriod(m.id, periodStart, periodEndExcl);
         const reported = reportedFn(m.id);
         html += '<div class="row-between" style="padding:7px 10px; margin-bottom:4px; border-radius:7px; ' + (reported?'':'background:var(--warn-soft);') + '">';
         html += '<div style="font-weight:600; font-size:13px;">' + escapeHtml(m.name) + '</div>';
@@ -2201,7 +2343,7 @@
         html += '<div class="nested-block" style="margin-top:16px; padding-top:16px;">';
         html += '<div class="row-between"><div class="name" style="font-size:16px;">Unassigned</div><div class="muted">' + unassignedTeam.length + ' missionaries</div></div>';
         unassignedTeam.slice().sort((a,b)=> (reportedFn(a.id)?1:0) - (reportedFn(b.id)?1:0)).forEach(m=>{
-          const met = computeMetricsForPeriod(m.id, periodStart);
+          const met = computeMetricsForPeriod(m.id, periodStart, periodEndExcl);
           const reported = reportedFn(m.id);
           html += '<div class="row-between" style="padding:7px 10px; margin-top:8px; margin-bottom:4px; border-radius:7px; ' + (reported?'':'background:var(--warn-soft);') + '">';
           html += '<div style="font-weight:600; font-size:13px;">' + escapeHtml(m.name) + '</div>';
@@ -2215,15 +2357,25 @@
 
     html += renderGoalsAndGroups(periodMode);
 
-    html += '<div class="card" id="summaryCard" style="display:none;"><h2>Report text</h2><div class="muted">Copy this into your group chat for the ' + periodWord + 'ly review.</div><div class="summary-box" id="summaryText"></div></div>';
+    html += '<div class="card" id="summaryCard" style="display:none;"><h2>Report text</h2><div class="muted">Copy this into your group chat for the ' + (isWeek ? 'report-day' : 'monthly') + ' review.</div><div class="summary-box" id="summaryText"></div></div>';
     return html;
   }
 
   function summaryText(periodMode){
     const isWeek = periodMode !== 'month';
-    const periodStart = isWeek ? periodStartISO('week') : periodStartISO('month');
-    const reportedFn = isWeek ? hasReportedThisWeek : hasReportedThisMonth;
-    let lines = ['SPIRIT OF SADIQ — ' + (isWeek?'WEEKLY':'MONTHLY') + ' REPORT', new Date().toDateString(), ''];
+    const offset = isWeek ? Math.min(0, state.reportCycleOffset||0) : 0;
+    const cyc = isWeek ? cycleAt(offset) : null;
+    const periodStart = isWeek ? cyc.start : periodStartISO('month');
+    const periodEndExcl = isWeek ? cyc.endExcl : null;
+    const reportedFn = isWeek ? (id=>hasReportedInCycle(id, cyc)) : hasReportedThisMonth;
+    let lines;
+    if(isWeek){
+      lines = ['SPIRIT OF SADIQ — REPORT FOR ' + fmtLongDate(cyc.end).toUpperCase(),
+        'Cycle: ' + cycleRangeText(cyc) + ' (' + cyc.days + ' days)' + (daysUntilISO(cyc.end) > 0 ? ' — in progress, ' + cycleDueText(cyc) : ''), ''];
+      if(offset < 0) lines.push('(Active contact / Daeen counts are as of today.)', '');
+    } else {
+      lines = ['SPIRIT OF SADIQ — MONTHLY REPORT', new Date().toDateString(), ''];
+    }
 
     function teamStats(team){
       let allContacts = [];
@@ -2234,7 +2386,7 @@
         daeenIds = daeenIds.concat(myDaeen.map(d=>d.id));
         myDaeen.forEach(d=> allContacts = allContacts.concat(state.contactsD[d.id]||[]));
       });
-      const baiatsThisPeriod = allContacts.filter(c=>c.stage===3 && c.baiatDate && c.baiatDate>=periodStart).length;
+      const baiatsThisPeriod = allContacts.filter(c=>c.stage===3 && inRangeISO(c.baiatDate, periodStart, periodEndExcl)).length;
       const activeContacts = allContacts.filter(isContactActive).length;
       const activeDaeen = daeenIds.filter(id=>isDaeenActive(id)).length;
       return {baiatsThisPeriod, activeContacts, totalContacts: allContacts.length, activeDaeen, totalDaeen: daeenIds.length};
@@ -2910,11 +3062,11 @@
     let html = '<div class="card"><div class="row-between"><h2>All Daeen (' + countedDaeen().length + ')</h2>';
     html += '<div class="row" style="gap:14px;">';
     html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="filterUnassigned" ' + (state.daeenFilterUnassigned?'checked':'') + '> unassigned only</label>';
-    html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="filterNotContacted" ' + (state.daeenFilterNotContacted?'checked':'') + '> not contacted this week only</label>';
+    html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="filterNotContacted" ' + (state.daeenFilterNotContacted?'checked':'') + '> not contacted this cycle only</label>';
     html += '</div></div>';
-    html += '<div class="muted" style="margin-bottom:8px;">Sorted with anyone not yet contacted this week first.</div>';
+    html += '<div class="muted" style="margin-bottom:8px;">Sorted with anyone not yet contacted this cycle first.</div>';
     html += '<div class="search-box"><input type="text" id="adminDaeenSearch" placeholder="Search Daeen…" value="' + escapeHtml(state.searchText) + '"></div>';
-    html += '<table class="admin-table"><thead><tr><th>Name</th><th>Jamaat</th><th>This week</th><th>Missionary</th><th></th></tr></thead><tbody>';
+    html += '<table class="admin-table"><thead><tr><th>Name</th><th>Jamaat</th><th>This cycle</th><th>Missionary</th><th></th></tr></thead><tbody>';
     for(const d of filtered){
       const contacted = contactedThisWeek(d);
       html += '<tr><td>' + escapeHtml(d.name) + '</td><td>' + escapeHtml(d.region||'—') + '</td>';
@@ -3169,7 +3321,7 @@
 
   function renderAdminApp(){
     let html = '<nav class="tabs">';
-    html += '<button class="' + (state.tab==='report'?'active':'') + '" id="tabReport">National Report Weekly</button>';
+    html += '<button class="' + (state.tab==='report'?'active':'') + '" id="tabReport">National Report</button>';
     html += '<button class="' + (state.tab==='reportMonthly'?'active':'') + '" id="tabReportMonthly">National Report Monthly</button>';
     html += '<button class="' + (state.tab==='ytdsheet'?'active':'') + '" id="tabYtdSheet">YTD Sheet</button>';
     html += '<button class="' + (state.tab==='baiats'?'active':'') + '" id="tabBaiats">Bai\'ats</button>';
@@ -3216,7 +3368,7 @@
     let html = '<div class="card"><h2>All Contacts (' + rows.length + ')</h2>';
     html += '<div class="muted" style="margin-bottom:10px;">Every contact, personal or via a Daeen, across the whole org — for reviewing who needs to move to the next stage. Change the Missionary dropdown to move a contact.</div>';
     html += '<div class="row" style="gap:16px; margin-bottom:10px; align-items:center;">';
-    html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="contactsFilterNotEngaged" ' + (state.contactsFilterNotEngaged?'checked':'') + '> not contacted this week only</label>';
+    html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="contactsFilterNotEngaged" ' + (state.contactsFilterNotEngaged?'checked':'') + '> not contacted this cycle only</label>';
     html += '<label style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">Stage: <select id="contactsFilterStage"><option value="">All</option>';
     for(let i=0;i<4;i++) html += '<option value="' + i + '" ' + (String(state.contactsFilterStage)===String(i)?'selected':'') + '>' + escapeHtml(state.stageLabels[i]) + '</option>';
     html += '</select></label>';
@@ -3224,7 +3376,7 @@
     html += '<div class="search-box"><input type="text" id="allContactsAdminSearch" placeholder="Search contacts…" value="' + escapeHtml(state.searchText) + '"></div>';
     if(!rows.length) html += '<div class="empty-state">No contacts match.</div>';
     else{
-      html += '<table class="admin-table"><thead><tr><th>Name</th><th>Stage</th><th>Missionary</th><th>Via Daeen</th><th>This week</th></tr></thead><tbody>';
+      html += '<table class="admin-table"><thead><tr><th>Name</th><th>Stage</th><th>Missionary</th><th>Via Daeen</th><th>This cycle</th></tr></thead><tbody>';
       rows.slice(0,200).forEach(r=>{
         const engaged = engagedThisWk(r.c);
         html += '<tr><td>' + escapeHtml(r.c.name) + '</td><td>' + escapeHtml(state.stageLabels[r.c.stage]) + '</td>';
@@ -3279,6 +3431,7 @@
     if(state.me.role === 'missionary'){
       const myRec = state.missionaries.find(m=>m.id===state.me.id);
       const isRL = myRec && myRec.isRegionalLeader;
+      html += renderCycleBanner();
       html += renderSummaryDashboard();
       html += '<nav class="tabs">';
       html += '<button class="' + (state.tab==='mine'?'active':'') + '" id="tabMine">My Contacts</button>';
@@ -3321,7 +3474,16 @@
     const tabLeaderboard = document.getElementById('tabLeaderboard');
     if(tabLeaderboard) tabLeaderboard.addEventListener('click', ()=>{ state.tab='leaderboard'; render(); });
     const tabReport = document.getElementById('tabReport');
-    if(tabReport) tabReport.addEventListener('click', ()=>{ state.tab='report'; render(); });
+    if(tabReport) tabReport.addEventListener('click', ()=>{ state.tab='report'; state.reportCycleOffset = 0; render(); });
+    const cycMax = ()=> Math.min(40, currentCycleIndex());
+    const cycPrev = document.getElementById('cycPrev');
+    if(cycPrev) cycPrev.addEventListener('click', ()=>{ state.reportCycleOffset = Math.max(-cycMax(), Math.min(0, state.reportCycleOffset||0) - 1); render(); });
+    const cycNext = document.getElementById('cycNext');
+    if(cycNext) cycNext.addEventListener('click', ()=>{ state.reportCycleOffset = Math.min(0, (state.reportCycleOffset||0) + 1); render(); });
+    const cycCurrent = document.getElementById('cycCurrent');
+    if(cycCurrent) cycCurrent.addEventListener('click', ()=>{ state.reportCycleOffset = 0; render(); });
+    const cycleSelect = document.getElementById('cycleSelect');
+    if(cycleSelect) cycleSelect.addEventListener('change', ()=>{ state.reportCycleOffset = Math.max(-cycMax(), Math.min(0, parseInt(cycleSelect.value,10)||0)); render(); });
     const tabReportMonthly = document.getElementById('tabReportMonthly');
     const ytdViewSelect = document.getElementById('ytdViewSelect');
     if(ytdViewSelect) ytdViewSelect.addEventListener('change', e=>{ state.ytdView = e.target.value; render(); });

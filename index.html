@@ -173,6 +173,7 @@
   table.ysheet .ys-input:focus{outline:2px solid var(--accent); outline-offset:1px; border-style:solid;}
   table.ysheet .ys-input.ys-edited{background:var(--accent-soft); font-weight:700; border-style:solid;}
   table.ysheet .ys-reset{font-size:11px; margin-top:2px;}
+  table.ysheet .ys-regtoggle{font-size:11px; font-weight:600; margin-left:6px;}
   table.ysheet td.ys-c2w{min-width:190px;}
   @media (max-width:640px){ table.ysheet td.ys-c2w{min-width:150px;} }
   table.ysheet .ys-text{width:100%; min-width:112px; font:inherit; font-size:13px; padding:5px 6px; border:1px dashed var(--accent); border-radius:6px; background:var(--surface); color:var(--text); text-align:left;}
@@ -594,7 +595,7 @@
     if(kv['ytd-month-overrides']){ try{ state.ytdMonthOverrides = JSON.parse(kv['ytd-month-overrides']) || {}; }catch(e){ state.ytdMonthOverrides = {}; } }
     if(kv['ytd-snapshots']){ try{ state.ytdSnapshots = JSON.parse(kv['ytd-snapshots']) || {}; }catch(e){ state.ytdSnapshots = {}; } }
     state.ytdManual = {label:'Alt. Region', rows:[]};
-    if(kv['ytd-manual']){ try{ const m = JSON.parse(kv['ytd-manual']); if(m && Array.isArray(m.rows)) state.ytdManual = {label: m.label || 'Alt. Region', rows: m.rows}; }catch(e){} }
+    if(kv['ytd-manual']){ try{ const m = JSON.parse(kv['ytd-manual']); if(m && Array.isArray(m.rows)) state.ytdManual = {label: m.label || 'Alt. Region', rows: m.rows, handRegions: (m.handRegions && typeof m.handRegions === 'object') ? m.handRegions : {}}; }catch(e){} }
 
     state.contactsM = {};
     state.groupReports = {};
@@ -2959,11 +2960,11 @@
     }
     return out;
   }
-  // Numbers typed in by National Access apply to unassigned missionaries only.
+  // Numbers typed in by National Access apply to editable rows only (unassigned, sheet-only, and regions switched to hand-typed).
   // Anything not typed in falls back to what the app counts (or was saved for that month).
-  function ytdEffectiveRow(m, unassigned, view){
+  function ytdEffectiveRow(m, editable, view){
     const out = Object.assign({}, ytdBaseRow(m, view), {edited:false, over:{}});
-    const o = unassigned ? ytdOverrideFor(view, m.id) : null;
+    const o = editable ? ytdOverrideFor(view, m.id) : null;
     if(o){
       ['target','daeen','daeenContacts','personalContacts','baiatsPersonal','baiatsDaeen'].forEach(k=>{
         if(ytdHasOverride(o,k)){ out[k] = Number(o[k]); out.over[k] = true; }
@@ -2991,27 +2992,28 @@
       const team = state.missionaries.filter(m=>m.id===rl.id || m.regionalLeaderId===rl.id)
         .sort((a,b)=> (a.id===rl.id ? -1 : b.id===rl.id ? 1 : a.name.localeCompare(b.name)));
       team.forEach(m=>coveredIds.add(m.id));
-      return {id: rl.id, label: rl.regionLabel || rl.name || 'Unnamed region', leaderId: rl.id, team, unassigned:false};
+      const label = rl.regionLabel || rl.name || 'Unnamed region';
+      return {id: rl.id, label, leaderId: rl.id, team, unassigned:false, editable: ytdRegionEditable(label, rl.id)};
     });
     const unassignedTeam = state.missionaries.filter(m=>!coveredIds.has(m.id)).sort((a,b)=>a.name.localeCompare(b.name));
     // Sheet-only people (e.g. Alt. Region): typed in here, never missionary records.
     const manual = ytdManualData();
-    if(manual.rows.length) raw.push({id:'manual', label:manual.label, leaderId:'', unassigned:true, manual:true,
+    if(manual.rows.length) raw.push({id:'manual', label:manual.label, leaderId:'', unassigned:true, manual:true, editable:true,
       team: manual.rows.map(rw=>({id:rw.id, name:rw.name||'', target:Number(rw.target)||10, manual:true, lead:!!rw.lead, jamaatsText:rw.jamaats||''}))});
-    if(unassignedTeam.length) raw.push({id:'unassigned', label:'Unassigned', leaderId:'', team:unassignedTeam, unassigned:true});
+    if(unassignedTeam.length) raw.push({id:'unassigned', label:'Unassigned', leaderId:'', team:unassignedTeam, unassigned:true, editable:true});
 
     let n = 0; const all = []; const groups = [];
     raw.forEach(g=>{
       // The Missionary In-Charge keeps full access but is left out of the data.
       const rows = g.team.filter(m=>!m.isInCharge).map(m=>{
         n++;
-        const r = ytdEffectiveRow(m, g.unassigned, view);
+        const r = ytdEffectiveRow(m, !!g.editable, view);
         if(m.manual) r.jamaats = ytdSplitList(m.jamaatsText);
         all.push(r);
         return {m, r, n, lead: m.manual ? !!m.lead : (!g.unassigned && m.id===g.leaderId)};
       });
       if(!rows.length) return;
-      groups.push({id:g.id, label:g.label, unassigned:g.unassigned, manual:!!g.manual, rows, totals: ytdTotals(rows.map(x=>x.r))});
+      groups.push({id:g.id, label:g.label, leaderId:g.leaderId, unassigned:g.unassigned, manual:!!g.manual, editable:!!g.editable, rows, totals: ytdTotals(rows.map(x=>x.r))});
     });
     return {view, groups, totals: ytdTotals(all), count: all.length, excluded: state.missionaries.filter(m=>m.isInCharge).length};
   }
@@ -3159,7 +3161,7 @@
         const el = document.querySelector('[data-ytot="' + g.id + '|' + k + '"]');
         if(el) el.textContent = show(g.totals[k]);
       });
-      if(g.unassigned) g.rows.forEach(x=>{
+      if(g.editable) g.rows.forEach(x=>{
         YTD_FIELDS.forEach(k=>{
           const inp = document.getElementById('ys_' + x.m.id + '_' + k);
           if(!inp) return;
@@ -3206,7 +3208,17 @@
   const YTD_MANUAL_KEY = 'ytd-manual';
   function ytdManualData(){
     const m = state.ytdManual || {};
-    return {label: m.label || 'Alt. Region', rows: Array.isArray(m.rows) ? m.rows : []};
+    return {label: m.label || 'Alt. Region', rows: Array.isArray(m.rows) ? m.rows : [], handRegions: (m.handRegions && typeof m.handRegions === 'object') ? m.handRegions : {}};
+  }
+  // A region's numbers can be typed in by hand (for regions that send theirs by email).
+  // Regions called "Alt..." start that way; the link on each region's heading switches it either way.
+  function ytdRegionEditable(label, leaderId){
+    const hr = ytdManualData().handRegions;
+    return hr[leaderId] !== undefined ? !!hr[leaderId] : /alt/i.test(label || '');
+  }
+  function setYtdRegionEditable(leaderId, on){
+    editYtdManual(d=>{ if(!d.handRegions || typeof d.handRegions !== 'object') d.handRegions = {}; d.handRegions[leaderId] = !!on; });
+    render();
   }
   function ytdSplitList(t){ return String(t || '').split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean); }
   // Applies the change here straight away, then saves it on top of the latest shared copy
@@ -3292,7 +3304,7 @@
       let sel = null;
       if(state.ytdMoveSel === null) sel = ok.find(x=>/alt/i.test(x.rl.regionLabel||'')) || null;
       else sel = ok.find(x=>x.rl.id===state.ytdMoveSel) || null;
-      html += '<div class="ys-manual-move"><div class="muted" style="font-size:12px; margin-bottom:6px;">Already set up as a region? Move its people onto the sheet:</div>';
+      html += '<div class="ys-manual-move"><div class="muted" style="font-size:12px; margin-bottom:6px;">Optional: take a region\u2019s people off the Missionaries tab and out of every report by moving them onto this sheet:</div>';
       html += '<select id="ytdMoveSelect" aria-label="Region to move onto the sheet"><option value=""' + (sel ? '' : ' selected') + '>Choose a region\u2026</option>' + regions.map(x=>'<option value="' + x.rl.id + '"' + (x.blocked.length ? ' disabled' : '') + (sel && sel.rl.id===x.rl.id ? ' selected' : '') + '>' + escapeHtml(x.rl.regionLabel || x.rl.name) + ' (' + x.team.length + ')' + (x.blocked.length ? ' — has Daeen or contacts, can’t move' : '') + '</option>').join('') + '</select> ';
       if(sel && state.ytdMoveConfirm === sel.rl.id){
         html += '<div class="ys-confirm">Move ' + sel.team.length + ' ' + (sel.team.length===1?'person':'people') + ' from “' + escapeHtml(sel.rl.regionLabel || sel.rl.name) + '” onto this sheet? They’ll be removed from the Missionaries tab and from every report, and can no longer log in. Numbers already on this sheet stay. <span class="ys-confirm-btns"><button class="primary" data-action="ytdMoveYes" data-id="' + sel.rl.id + '">Yes, move them</button><button class="ghost" data-action="ytdMoveNo">Cancel</button></span></div>';
@@ -3337,7 +3349,7 @@
 
     if(!model.groups.length) html += '<tr><td colspan="' + COLS + '" style="text-align:center; padding:18px; color:var(--text-muted);">No missionaries yet.</td></tr>';
     model.groups.forEach(g=>{
-      html += '<tr class="ys-band' + ((g.unassigned && !g.manual)?' ys-unassigned':'') + '"><td colspan="' + COLS + '"><span>' + escapeHtml(g.label) + (g.manual ? ' <em class="ys-hint">— sheet only: names and numbers here can be edited</em>' : (g.unassigned ? ' <em class="ys-hint">— numbers in this section can be edited</em>' : '')) + '</span></td></tr>';
+      html += '<tr class="ys-band' + ((g.unassigned && !g.manual)?' ys-unassigned':'') + '"><td colspan="' + COLS + '"><span>' + escapeHtml(g.label) + (g.manual ? ' <em class="ys-hint">— sheet only: names and numbers here can be edited</em>' : (g.unassigned ? ' <em class="ys-hint">— numbers in this section can be edited</em>' : (g.editable ? ' <em class="ys-hint">— numbers here can be typed in</em> <button class="small-link ys-regtoggle" data-action="ytdRegionEdit" data-id="' + g.leaderId + '" data-on="0">use app numbers</button>' : ' <button class="small-link ys-regtoggle" data-action="ytdRegionEdit" data-id="' + g.leaderId + '" data-on="1">type numbers by hand</button>'))) + '</span></td></tr>';
       g.rows.forEach(x=>{
         const r = x.r, m = x.m;
         html += '<tr><td class="ys-c1">' + x.n + '</td>';
@@ -3351,10 +3363,10 @@
           YTD_FIELDS.forEach(k=> html += yinput(m.id, k, r));
         } else {
           html += '<td class="ys-c2">' + escapeHtml(m.name) + (x.lead ? ' <span class="ys-lead">[Lead]</span>' : '');
-          if(g.unassigned) html += '<div><button class="small-link ys-reset" data-yreset="' + m.id + '" data-action="ytdResetRow" data-id="' + m.id + '" style="' + (r.edited ? '' : 'display:none;') + '">use app numbers</button></div>';
+          if(g.editable) html += '<div><button class="small-link ys-reset" data-yreset="' + m.id + '" data-action="ytdResetRow" data-id="' + m.id + '" style="' + (r.edited ? '' : 'display:none;') + '">use app numbers</button></div>';
           html += '</td>';
           html += '<td class="ys-c3 ys-jam">' + (r.jamaats.length ? r.jamaats.map(escapeHtml).join('<br>') : '—') + '</td>';
-          if(g.unassigned){
+          if(g.editable){
             YTD_FIELDS.forEach(k=> html += yinput(m.id, k, r));
           } else {
             html += '<td>' + r.target + '</td>';
@@ -3382,7 +3394,7 @@
       else html += ' Daeen and contact numbers come from the totals the app saves automatically whenever National Access opens it (the latest one in that month). A dash means none were saved for that month.';
       html += ' Jama’ats are taken from each missionary’s Daeen today.';
     }
-    html += ' Unassigned and sheet-only rows: type over any number to replace it (the dashed boxes); clear a box to go back to the app’s number (for sheet-only people that is 0, or a dash for earlier months). Typed numbers are kept separately for year to date and for each month, are never reset, and appear on this page and in the copy and CSV only.';
+    html += ' Unassigned, sheet-only and hand-typed regions: type over any number to replace it (the dashed boxes); clear a box to go back to the app’s number (for sheet-only people that is 0, or a dash for earlier months). The link on each region’s heading switches that region between hand-typed and the app’s numbers. Typed numbers are kept separately for year to date and for each month, are never reset, and appear on this page and in the copy and CSV only.';
     if(model.excluded) html += ' ' + (model.excluded===1 ? '1 missionary is' : model.excluded + ' missionaries are') + ' marked In-Charge and left out of this page.';
     html += ' Use the arrows to move between months. Scroll sideways on a phone — the name stays in view.</div>';
     html += '</div>';
@@ -4324,6 +4336,7 @@
     root.querySelectorAll('[data-action="toggleInCharge"]').forEach(cb=> cb.addEventListener('change', ()=> toggleInCharge(cb.getAttribute('data-id'))));
     root.querySelectorAll('input.ys-input').forEach(inp=> inp.addEventListener('change', ()=> onYtdInputChange(inp)));
     root.querySelectorAll('[data-action="ytdResetRow"]').forEach(b=> b.addEventListener('click', ()=> resetYtdRow(b.getAttribute('data-id'))));
+    root.querySelectorAll('[data-action="ytdRegionEdit"]').forEach(b=> b.addEventListener('click', ()=> setYtdRegionEditable(b.getAttribute('data-id'), b.getAttribute('data-on') === '1')));
     root.querySelectorAll('input[data-mfield]').forEach(inp=> inp.addEventListener('change', ()=> onYtdManualField(inp)));
     root.querySelectorAll('[data-action="ytdManualRemoveAsk"]').forEach(b=> b.addEventListener('click', ()=>{ state.ytdManualConfirm = b.getAttribute('data-id'); render(); }));
     root.querySelectorAll('[data-action="ytdManualRemoveNo"]').forEach(b=> b.addEventListener('click', ()=>{ state.ytdManualConfirm = null; render(); }));

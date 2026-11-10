@@ -184,6 +184,10 @@
   .group-actions{display:flex; gap:8px; flex-wrap:wrap;}
   .aux-ask{background:var(--accent-soft); border-radius:10px; padding:9px 12px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap; font-size:13px; font-weight:600;}
   .aux-btns{display:flex; gap:6px; flex-wrap:wrap;}
+  .top-badges{display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex-shrink:0;}
+  .aux-stamp{border:1.5px solid var(--accent); color:var(--accent-deep); border-radius:6px; padding:2px 8px; font-size:10.5px; font-weight:800; letter-spacing:0.07em; text-transform:uppercase; white-space:nowrap;}
+  .aux-done{background:var(--good-soft); color:var(--good); border-radius:10px; padding:9px 12px; margin-bottom:12px; font-size:13px; font-weight:600; overflow:hidden; animation:auxDone 4s ease forwards;}
+  @keyframes auxDone{0%,80%{opacity:1; max-height:60px; padding-top:9px; padding-bottom:9px; margin-bottom:12px;} 100%{opacity:0; max-height:0; padding-top:0; padding-bottom:0; margin-bottom:0;}}
   .aux-btns button{padding:6px 12px; font-size:12px;}
   .table-scroll{overflow-x:auto; -webkit-overflow-scrolling:touch;}
   @media (max-width:640px){ .group-head{position:sticky; left:0; max-width:calc(100vw - 84px);} }
@@ -215,6 +219,20 @@
   button.ghost:active{ transform:scale(0.97); }
 
   .progress-fill{ transition: width 0.9s cubic-bezier(0.22,1,0.36,1); }
+  .pace-wrap{position:relative; margin-top:10px;}
+  .pace-wrap .progress-track{margin-top:0;}
+  .pace-tick{position:absolute; top:-3px; bottom:-3px; width:2px; margin-left:-1px; background:var(--text); border-radius:1px; opacity:.7;}
+  .pace-line{display:flex; justify-content:space-between; align-items:center; gap:6px 10px; flex-wrap:wrap; margin-top:8px; font-size:12px; color:var(--text-muted);}
+  .pace-line b{color:var(--text);}
+  .pace-chip{font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:6px; white-space:nowrap;}
+  .pace-good{background:var(--good-soft); color:var(--good);}
+  .pace-behind{background:#FEF3E2; color:var(--caution);}
+  .pace-sub{font-size:10px; font-weight:600; margin-top:1px; white-space:nowrap;}
+  /* On a phone the month columns scroll sideways; keep the name, Pace and YTD / Goal pinned in view. */
+  table.pace-table{border-collapse:separate; border-spacing:0;}
+  table.pace-table th:first-child, table.pace-table td:first-child{position:sticky; left:0; z-index:2; background:var(--surface);}
+  table.pace-table th:nth-last-child(2), table.pace-table td:nth-last-child(2){position:sticky; right:68px; z-index:1; background:var(--surface); width:46px; min-width:46px;}
+  table.pace-table th:last-child, table.pace-table td:last-child{position:sticky; right:0; z-index:2; background:var(--surface); width:68px; min-width:68px; max-width:68px; box-shadow:-8px 0 8px -8px rgba(0,0,0,.2);}
   .status-dot{ transition: background 0.3s ease, box-shadow 0.3s ease; }
   .status-dot:not(.overdue){ box-shadow:0 0 0 4px rgba(22,163,74,0.14); }
   .status-dot.overdue{ animation: softPulse 2.2s ease-in-out infinite; }
@@ -254,6 +272,7 @@
     tab: 'mine',
     period: 'week',
     reportCycleOffset: 0,   // National Report: 0 = current cycle, -1 = previous, ...
+    auxJust: null,          // Daeen whose group was just saved (drives the short confirmation)
     adminConfirm: null,     // Backup tab: pending {type:'reset'|'remove', id}
     monthlyFunnelPeriod: 'month',
     setupStage: 'role',
@@ -868,6 +887,66 @@
     if(!dateStr) return false;
     const d = String(dateStr).slice(0,10);
     return d >= fiscalYearStartISO() && d <= fiscalYearEndISO();
+  }
+
+  // ---------- pace: where the goal says we should be by now ----------
+  // A fiscal-year goal (say 10 Bai'ats in 12 months) is treated as earned evenly
+  // across the year. "Should have by now" = goal x share of the fiscal year gone,
+  // rounded down (nobody has 0.6 of a Bai'at), so no one is flagged for a fraction.
+  function fyElapsedFraction(){
+    const s = fiscalYearStartISO(), e = fiscalYearEndISO(), t = todayStr();
+    const total = daysBetween(s, e) + 1;
+    const gone = Math.min(total, Math.max(0, daysBetween(s, t) + 1));
+    return gone / total;
+  }
+  function paceExpected(goal){ return Math.floor((goal||0) * fyElapsedFraction() + 1e-9); }
+  function paceStatus(actual, goal){
+    const expected = paceExpected(goal);
+    if(goal > 0 && actual >= goal) return {key:'met', expected, gap:0};
+    if(actual >= expected) return {key:'on', expected, gap: actual - expected};
+    return {key:'behind', expected, gap: expected - actual};
+  }
+  // Progress bar with a tick where the goal says we should be today, and a line
+  // under it saying so. Used for the combined card and each region.
+  function paceBarHtml(current, goal, label){
+    const pct = goal>0 ? Math.min(100, Math.round(current/goal*100)) : 0;
+    const yearPct = Math.round(fyElapsedFraction()*100);
+    const st = paceStatus(current, goal);
+    const fill = st.key==='met' ? 'var(--good)' : (st.key==='behind' ? 'var(--caution)' : 'var(--accent)');
+    let chip;
+    if(st.key==='met') chip = '<span class="pace-chip pace-good">Goal reached ✓</span>';
+    else if(st.key==='on') chip = '<span class="pace-chip pace-good">' + (st.gap>0 ? st.gap + ' ahead of pace' : 'On pace') + '</span>';
+    else chip = '<span class="pace-chip pace-behind">' + st.gap + ' behind pace</span>';
+    let html = '<div style="margin-bottom:10px;">';
+    html += '<div class="row-between" style="margin-bottom:4px;"><span class="muted">' + escapeHtml(label) + '</span><span class="muted" style="font-family:var(--mono);">' + current + ' / ' + goal + '</span></div>';
+    html += '<div class="pace-wrap"><div class="progress-track"><div class="progress-fill" style="width:' + pct + '%; background:' + fill + ';"></div></div>';
+    html += '<div class="pace-tick" style="left:' + yearPct + '%;" title="Where the goal says you should be by now: ' + st.expected + ' (' + yearPct + '% of the fiscal year gone)"></div></div>';
+    html += '<div class="pace-line"><span>Should be at <b>' + st.expected + '</b> by now <span style="opacity:.8;">(' + yearPct + '% of the year)</span></span>' + chip + '</div>';
+    html += '</div>';
+    return html;
+  }
+  // One region's table: a column per month, the pace for today, and YTD / goal.
+  function regionBaiatTableHtml(team, months){
+    let html = '<div style="overflow-x:auto; margin-top:8px;"><table class="admin-table pace-table" style="font-size:11.5px;"><thead><tr><th>Missionary</th>';
+    months.forEach(mo=> html += '<th style="text-align:center;">' + formatMonthLabel(mo) + '</th>');
+    html += '<th style="text-align:center;" title="Where the goal says each missionary should be by today">Pace</th><th style="text-align:center;">YTD / Goal</th></tr></thead><tbody>';
+    team.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(m=>{
+      const mYtd = baiatsYTDForMissionary(m.id), mGoal = m.target||10;
+      const st = paceStatus(mYtd, mGoal);
+      const col = st.key==='behind' ? 'var(--caution)' : 'var(--good)';
+      let sub = '';
+      if(st.key==='behind') sub = st.gap + ' behind';
+      else if(st.key==='on') sub = st.gap>0 ? st.gap + ' ahead' : 'on pace';
+      html += '<tr><td>' + escapeHtml(m.name) + '</td>';
+      months.forEach(mo=>{
+        const count = baiatsInMonthForMissionary(m.id, mo);
+        html += '<td style="text-align:center; ' + (count>0?'color:var(--good); font-weight:700;':'color:var(--text-muted);') + '">' + count + '</td>';
+      });
+      html += '<td style="text-align:center; color:var(--text-muted);">' + st.expected + '</td>';
+      html += '<td style="text-align:center; font-weight:800; color:' + col + ';">' + mYtd + '/' + mGoal + (st.key==='met' ? ' ✓' : '') + (sub ? '<div class="pace-sub">' + sub + '</div>' : '') + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    return html;
   }
 
   function baiatsYTDForMissionary(missionaryId){
@@ -1915,8 +1994,8 @@
       html += '<div class="contact-card">';
       html += '<div class="contact-top"><div><div class="contact-name"><span class="status-dot ' + (overdue?'overdue':'') + '"></span>' + escapeHtml(d.name) + '</div>';
       const auxTag = auxLabel(d.auxiliary);
-      if(d.region || auxTag) html += '<div class="daeen-region">' + escapeHtml(d.region||'') + (d.region && auxTag ? ' \u00b7 ' : '') + (auxTag ? '<b>' + escapeHtml(auxTag) + '</b>' : '') + '</div>';
-      html += '<div class="contact-meta ' + (overdue?'overdue-text':'') + '" style="margin-top:5px;">' + (dd===null?'not yet engaged':(dd===0?'engaged today':'engaged ' + dd + ' day' + (dd===1?'':'s') + ' ago')) + (methodLabel(d.lastEngagedMethod)?(' — ' + methodLabel(d.lastEngagedMethod)):'') + (overdue?' — check in':'') + '</div></div>' + (active?'<span class="ok-badge">active</span>':'<span class="flag-badge">inactive</span>') + '</div>';
+      if(d.region) html += '<div class="daeen-region">' + escapeHtml(d.region) + '</div>';
+      html += '<div class="contact-meta ' + (overdue?'overdue-text':'') + '" style="margin-top:5px;">' + (dd===null?'not yet engaged':(dd===0?'engaged today':'engaged ' + dd + ' day' + (dd===1?'':'s') + ' ago')) + (methodLabel(d.lastEngagedMethod)?(' — ' + methodLabel(d.lastEngagedMethod)):'') + (overdue?' — check in':'') + '</div></div>' + '<div class="top-badges">' + (active?'<span class="ok-badge">active</span>':'<span class="flag-badge">inactive</span>') + (auxTag ? '<span class="aux-stamp" title="Group">' + escapeHtml(auxTag) + '</span>' : '') + '</div></div>';
       if(d.notes) html += '<div class="notes-text">' + escapeHtml(d.notes) + '</div>';
       html += '<div class="eyebrow" style="margin-top:14px; margin-bottom:7px;">Log an interaction</div>';
       html += '<div class="row" style="margin-bottom:12px;">';
@@ -1924,7 +2003,11 @@
       html += '<button class="ghost" data-action="engage" data-method="phone" data-id="' + d.id + '">By phone</button>';
       html += '</div>';
       // One-time question: disappears as soon as an answer is saved.
-      if(!auxLabel(d.auxiliary)){
+      if(auxTag && state.auxJust && state.auxJust.id === d.id){
+        const elapsed = Date.now() - state.auxJust.ts;
+        if(elapsed < 4500) html += '<div class="aux-done" style="animation-delay:-' + (elapsed/1000).toFixed(2) + 's">\u2713 ' + escapeHtml(d.name) + ' added as <b>' + escapeHtml(auxTag) + '</b></div>';
+      }
+      if(!auxTag){
         html += '<div class="aux-ask"><span>Which group is ' + escapeHtml(d.name) + ' in?</span><span class="aux-btns">'
           + AUX_GROUPS.map(g=> '<button class="ghost" data-action="setAux" data-aux="' + g.key + '" data-id="' + d.id + '">' + g.label + '</button>').join('') + '</span></div>';
       }
@@ -2221,8 +2304,9 @@
     const sumYtd = withGoals.reduce((s,x)=>s+x.ytd,0);
     const sumGoal = withGoals.reduce((s,x)=>s+x.goal,0);
     html += '<div class="card"><h2>Missionary Bai\'at goals (year to date)</h2>';
-    html += '<div class="muted" style="margin-bottom:10px;">' + metGoal + ' of ' + withGoals.length + ' missionaries have reached their goal — see the region breakdown below for who\u2019s still working toward it.</div>';
-    html += progressBarHtml(sumYtd, sumGoal, 'Combined progress');
+    const onPaceCount = withGoals.filter(x=>paceStatus(x.ytd, x.goal).key !== 'behind').length;
+    html += '<div class="muted" style="margin-bottom:10px;">' + onPaceCount + ' of ' + withGoals.length + ' missionaries are on pace for this point in the year, and ' + metGoal + ' ' + (metGoal===1?'has':'have') + ' reached the full goal. The region breakdown below shows who is behind.</div>';
+    html += paceBarHtml(sumYtd, sumGoal, 'Combined progress');
     html += '</div>';
 
     // ----- Daeen annual Bai'at goals -----
@@ -2251,27 +2335,15 @@
     const leaders = state.missionaries.filter(m=>m.isRegionalLeader);
     if(leaders.length){
       html += '<div class="card"><h2>Progress by region</h2>';
+      html += '<div class="muted" style="margin-bottom:6px;">The year is ' + Math.round(fyElapsedFraction()*100) + '% done (FY ' + fiscalYearLabel() + '). The tick on each bar and the Pace column show where the goal says each should be by today (rounded down to whole Bai\u2019ats).</div>';
       const months = monthsSinceTrackingStart();
       leaders.forEach(rl=>{
         const team = teamOf(rl);
         const ytd = team.reduce((s,m)=>s+baiatsYTDForMissionary(m.id),0);
         const goal = team.reduce((s,m)=>s+(m.target||10),0);
         html += '<div class="nested-block" style="margin-top:14px; padding-top:14px;">';
-        html += progressBarHtml(ytd, goal, (rl.regionLabel||rl.name) + ' (' + team.length + ' missionaries)');
-        html += '<div style="overflow-x:auto; margin-top:8px;"><table class="admin-table" style="font-size:11.5px;"><thead><tr><th>Missionary</th>';
-        months.forEach(mo=> html += '<th style="text-align:center;">' + formatMonthLabel(mo) + '</th>');
-        html += '<th style="text-align:center;">YTD / Goal</th></tr></thead><tbody>';
-        team.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(m=>{
-          const mYtd = baiatsYTDForMissionary(m.id), mGoal = m.target||10;
-          const met = mYtd >= mGoal;
-          html += '<tr><td>' + escapeHtml(m.name) + '</td>';
-          months.forEach(mo=>{
-            const count = baiatsInMonthForMissionary(m.id, mo);
-            html += '<td style="text-align:center; ' + (count>0?'color:var(--good); font-weight:700;':'color:var(--text-muted);') + '">' + count + '</td>';
-          });
-          html += '<td style="text-align:center; font-weight:800; color:' + (met?'var(--good)':'var(--text-muted)') + ';">' + mYtd + '/' + mGoal + (met?' \u2713':'') + '</td></tr>';
-        });
-        html += '</tbody></table></div>';
+        html += paceBarHtml(ytd, goal, (rl.regionLabel||rl.name) + ' (' + team.length + ' missionaries)');
+        html += regionBaiatTableHtml(team, months);
         html += '</div>';
       });
       if(!isWeek){
@@ -2282,21 +2354,8 @@
           const uYtd = unassignedTeam.reduce((s,m)=>s+baiatsYTDForMissionary(m.id),0);
           const uGoal = unassignedTeam.reduce((s,m)=>s+(m.target||10),0);
           html += '<div class="nested-block" style="margin-top:14px; padding-top:14px;">';
-          html += progressBarHtml(uYtd, uGoal, 'Unassigned (' + unassignedTeam.length + ' missionaries)');
-          html += '<div style="overflow-x:auto; margin-top:8px;"><table class="admin-table" style="font-size:11.5px;"><thead><tr><th>Missionary</th>';
-          months.forEach(mo=> html += '<th style="text-align:center;">' + formatMonthLabel(mo) + '</th>');
-          html += '<th style="text-align:center;">YTD / Goal</th></tr></thead><tbody>';
-          unassignedTeam.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(m=>{
-            const mYtd = baiatsYTDForMissionary(m.id), mGoal = m.target||10;
-            const met = mYtd >= mGoal;
-            html += '<tr><td>' + escapeHtml(m.name) + '</td>';
-            months.forEach(mo=>{
-              const count = baiatsInMonthForMissionary(m.id, mo);
-              html += '<td style="text-align:center; ' + (count>0?'color:var(--good); font-weight:700;':'color:var(--text-muted);') + '">' + count + '</td>';
-            });
-            html += '<td style="text-align:center; font-weight:800; color:' + (met?'var(--good)':'var(--text-muted)') + ';">' + mYtd + '/' + mGoal + (met?' \u2713':'') + '</td></tr>';
-          });
-          html += '</tbody></table></div>';
+          html += paceBarHtml(uYtd, uGoal, 'Unassigned (' + unassignedTeam.length + ' missionaries)');
+          html += regionBaiatTableHtml(unassignedTeam, months);
           html += '</div>';
         }
       }
@@ -3994,8 +4053,8 @@
     }));
     root.querySelectorAll('[data-action="copyDaeenMsg"]').forEach(b=> b.addEventListener('click', ()=> copyDaeenContactMessage(b.getAttribute('data-id'), b.getAttribute('data-contact') || null)));
     root.querySelectorAll('[data-action="setAux"]').forEach(b=> b.addEventListener('click', ()=> {
+      state.auxJust = {id: b.getAttribute('data-id'), ts: Date.now()};
       updateDaeenEntry(b.getAttribute('data-id'), {auxiliary: b.getAttribute('data-aux')});
-      showToast('Saved \u2014 ' + auxLabel(b.getAttribute('data-aux')));
     }));
     root.querySelectorAll('[data-action="toggleTrained"]').forEach(cb=> cb.addEventListener('change', e=>{
       const checked = e.target.checked;
